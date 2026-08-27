@@ -1,0 +1,6 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": ["app", "dsp_core", "tests"],
+  "exclude": [".venv", "**/__pycache__"]
+}

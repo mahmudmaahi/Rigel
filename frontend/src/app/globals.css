@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --background: #f7f7f4;
+  --foreground: #050505;
+  --card: #ffffff;
+  --card-foreground: #050505;
+  --border: #d8d8d3;
+  --muted: #ecece6;
+  --muted-foreground: #595955;
+  --primary: #050505;
+  --primary-foreground: #f7f7f4;
+  --accent: #eeeeea;
+  --accent-foreground: #050505;
+  --destructive: #171717;
+  --destructive-foreground: #f7f7f4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--background);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
