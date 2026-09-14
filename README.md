@@ -1,8 +1,8 @@
 # Rigel
 
-Team Orion's Rigel project is an incremental intelligent audio platform. The current implementation is **Module 03 - Waveform Visualization**: a canvas-based interactive waveform viewer, a synchronized audio player, peak-preserving waveform decimation in the DSP core, and a new `/api/audio/analyze` endpoint that returns both metadata and waveform data.
+Team Orion's Rigel project is an incremental intelligent audio platform. The current implementation is **Module 06 — Audio Filtering**: Classical IIR / FIR frequency-selective filtering and parametric EQ. Features zero-phase offline processing via `sosfiltfilt` / `filtfilt` with 5 classical IIR families, FIR window methods, and Parks-McClellan designs, powered by a new `dsp_core/filtering.py` module.
 
-Rigel does **not** yet implement FFT, spectrograms, filters, denoising, VAD, voice effects, ANC, desktop functionality, or AI. Those belong to later modules.
+Rigel does **not** yet implement denoising, VAD, voice effects, ANC, desktop functionality, or AI. Those belong to later modules.
 
 ## Project Structure
 
@@ -11,17 +11,19 @@ rigel/
 |-- frontend/              # Next.js + TypeScript web application
 |   |-- src/app/           # App Router pages and global styles
 |   |-- src/components/    # Product UI and reusable components
-|   |   |-- audio/         # AudioUploader, WaveformViewer, AudioPlayer
+|   |   |-- audio/         # AudioUploader, WaveformViewer, SpectrumViewer, SpectrogramViewer, AudioPlayer
 |   |   `-- ui/            # Shared UI primitives (Card, Badge)
 |   `-- src/lib/           # Frontend API client and shared types
 |-- backend/               # FastAPI API layer and reusable Python packages
 |   |-- app/               # FastAPI application code
 |   |   |-- api/           # Route handlers
 |   |   |-- models/        # Pydantic request/response models
-|   |   `-- services/      # Business logic (audio loading, waveform, status)
+|   |   `-- services/      # Business logic (audio loading, waveform, spectrum, spectrogram, status)
 |   |-- dsp_core/          # Framework-independent audio/DSP package
 |   |   |-- audio_loader.py  # WAV decoding → NumPy (Module 02)
-|   |   `-- waveform.py      # Peak-envelope decimation (Module 03)
+|   |   |-- waveform.py      # Peak-envelope decimation (Module 03)
+|   |   |-- spectrum.py      # FFT magnitude spectrum in dBFS (Module 04)
+|   |   `-- stft.py          # STFT spectrogram with Hann windowing (Module 05)
 |   `-- tests/             # Backend tests
 |-- AGENT_INSTRUCTIONS.md  # Governing project instructions
 |-- README.md              # Current implementation state
@@ -43,16 +45,16 @@ FastAPI Backend
 Audio Service
       |
       v
-dsp_core Audio Loader   +   dsp_core Waveform
-      |                           |
-      v                           v
-NumPy samples          Decimated bins (min, max, time)
-      |                           |
-      +---------------------------+
-                    |
-                    v
-           AudioAnalyzeResponse
-        (metadata + waveform data)
+dsp_core Loader  +  dsp_core Waveform  +  dsp_core Spectrum  +  dsp_core STFT  +  dsp_core Filtering
+      |                    |                    |                      |                      |
+      v                    v                    v                      v                      v
+NumPy samples     Decimated bins       One-sided FFT mag.    STFT magnitude matrix      Filtered NumPy
+                  (min, max, time)     (dBFS, 1024 bins)     (dBFS, 512×256 display)    (WAV download)
+      |                    |                    |                      |                      |
+      +--------------------+--------------------+----------------------+----------------------+
+                                         |
+                                         v
+         AudioAnalyzeResponse / AudioSpectrumResponse / AudioSpectrogramResponse / WAV file
 ```
 
 The DSP core is framework-independent. It accepts NumPy arrays and returns plain Python dataclasses. FastAPI does not contain decoding or DSP logic directly.
@@ -87,21 +89,92 @@ The frontend uses the browser's local `File` object URL (`URL.createObjectURL`) 
 - FastAPI endpoint: `POST /api/audio/analyze` — returns metadata plus decimated waveform data (replaces the primary upload flow; the old `/api/audio/upload` endpoint is preserved for backward compatibility).
 - `frontend/src/components/audio/waveform-viewer.tsx` — canvas-based waveform component with:
   - Peak-envelope bars (min/max per bin) rendered on HTML5 Canvas.
+  - Generous 140px channel height with proper clipping-safe playhead handle.
+  - Interactive hover scrubber line and floating timestamp tooltip for precise audio inspection.
   - Responsive sizing via ResizeObserver with device pixel ratio correction.
   - Time-axis tick marks with sensible auto-interval selection.
   - Animated playhead line synchronized with audio playback.
   - Click-to-seek: maps canvas X position to audio timestamp.
   - Stereo: two separate waveform rows (L/R), not collapsed to mono.
 - `frontend/src/components/audio/audio-player.tsx` — HTML5 audio player component with:
-  - Play/Pause, seek slider, current time / duration display, mute toggle.
+  - Play/Pause, interactive seek slider with visible hover thumb, current time / duration display, mute toggle.
   - `onTimeUpdate` callback to drive waveform playhead.
   - `seekTarget` prop for programmatic seeking from waveform clicks.
-- Updated `frontend/src/components/audio/audio-uploader.tsx` — orchestrates the full flow: analyzes audio, creates local object URL for playback, manages shared `currentTime` and `seekTarget` state between viewer and player.
+- Updated `frontend/src/components/audio/audio-uploader.tsx` — orchestrates the full flow: analyzes audio, creates local object URL for playback, manages shared `currentTime` and `seekTarget` state between viewer and player. Product-focused copy throughout ("Audio Input", "Audio Workspace").
+- UI Refinement:
+  - **Comprehensive interactive visual system** with signal-inspired motion design throughout every element.
+  - **Precision technical aesthetic**: Corner alignment marks, coordinate badges, calibration ticks, channel labels (`CH_L`, `CH_R`, `CH_01`), amplitude scale markers (`+1.0`, `0.0`, `-1.0`), and technical grid crosshairs.
+  - **Living signal background**: Canvas-based ambient oscilloscope traces with mouse-proximity modulation and technical grid markers (respects `prefers-reduced-motion`).
+  - **Hero section**: Dynamic waveform backdrop that reveals on hover, coordinated staggered reveals, live timestamp telemetry, and precision coordinate badges.
+  - **Interactive audio input terminal**: Precision instrument styling with corner brackets, animated idle waveform inside dropzone, smooth drag-and-drop feedback, enhanced button with sliding highlight effect.
+  - **Signal Matrix workspace**: High-end laboratory aesthetic with live telemetry bar, precision metadata badges with divider lines and hover states, enhanced waveform canvas with amplitude scales and channel labels, refined playhead with subtle glow effect.
+  - **Micro-interactions**: Tactile button scaling, icon translations, hover shadow elevations, smooth state transitions across all interactive elements.
+  - **Technical typography**: Monospace coordinate markers, uppercase tracking, tabular numerals, and precision formatting throughout.
+  - **Refined footer**: Corner alignment marks, animated signal accent line, lift-on-hover social icons with shadow.
+  - All animations respect `prefers-reduced-motion` for accessibility.
+  - Clean metadata badges in the analysis panel (format, sample rate, channels, duration, bit depth, dtype).
+  - Collapsible "Discrete-Time Signal Matrix" inspection chamber with hover states.
 - Metadata badges in the analysis panel (format, sample rate, channels, duration, bit depth, dtype).
-- Signal details section (expandable) showing full sample summary.
+- Signal details section (expandable) showing full sample summary and discrete-time signal context.
+- `frontend/src/components/layout/footer.tsx` — modern footer component with Rigel branding, Team Orion identity, precision corner marks, animated accent line, and interactive social links.
+- `frontend/src/components/visual/signal-background.tsx` — full-page interactive signal background with oscilloscope traces, technical grid crosshairs, and subtle mouse-proximity modulation.
+- `frontend/src/components/visual/hero-signal.tsx` — hero section signal visualization with moving waveform and time markers.
+- `frontend/src/components/visual/dropzone-idle-waveform.tsx` — animated idle oscilloscope waveform inside the dropzone before file upload.
 - 33 new backend unit tests across 6 test classes covering: mono/stereo, bin count clamping, time mapping, min/max peak preservation, edge cases, long audio, and API response structure.
 
-## Waveform Decimation Design
+### Module 04 — Fourier Analysis
+
+- `backend/dsp_core/spectrum.py` — framework-independent one-sided FFT spectrum with:
+  - `normalize_samples()` — PCM integer/float → float32 amplitude in [-1, 1] for consistent dBFS reference.
+  - `compute_dft_naive()` — O(N²) reference implementation of the DFT equation `X[k] = Σ x[n]·exp(-j2πkn/N)`. Educational only; not called in production.
+  - `_compute_one_sided_magnitude()` — O(N log N) FFT via `np.fft.rfft` with correct one-sided amplitude scaling (DC and Nyquist not doubled; interior bins doubled).
+  - `_amplitudes_to_dbfs()` — converts linear amplitude to dBFS: `20·log10(A[k] + ε)`.
+  - `_downsample_spectrum()` — reduces raw FFT bins to ≤1024 display bins by peak-preserving linear binning (visualization step, not DSP mathematics).
+  - `compute_spectrum()` — main entry point: normalize → FFT → one-sided scaling → dBFS → display reduction.
+- FastAPI endpoint: `POST /api/audio/spectrum` — returns metadata plus display-ready magnitude spectrum.
+- `frontend/src/components/audio/spectrum-viewer.tsx` — canvas-based spectrum component with linear frequency X axis (0 Hz → Nyquist), dBFS Y axis (0 dBFS top, -90 bottom), grid lines at -20/-40/-60/-80 dBFS, filled indigo area chart, per-channel rows.
+- `frontend/src/lib/api.ts` — added `SpectrumBin`, `ChannelSpectrum`, `SpectrumData`, `AudioSpectrumResponse` types and `fetchSpectrum()` function.
+- 42 new backend tests in `tests/test_spectrum.py` covering normalization, naive DFT, FFT one-sided scaling, dBFS, display reduction, stereo, and API response structure.
+
+### Module 05 — Spectrogram / STFT
+
+- `backend/dsp_core/stft.py` — framework-independent STFT spectrogram:
+  - `hann_window(L)` — Hann window `w[n] = 0.5·(1 − cos(2πn/(L−1)))` to reduce spectral leakage at frame boundaries.
+  - `_stft_channel()` — extracts overlapping frames, applies Hann window, calls `np.fft.rfft`, normalizes magnitude by L.
+  - `_magnitudes_to_dbfs()` — 2-D `20·log10(magnitude + ε)` conversion.
+  - `_downsample_time()` / `_downsample_freq()` — peak-preserving downsampling to at most 512 time columns × 256 frequency rows.
+  - `_build_time_axis()` / `_build_freq_axis()` — compute centre time/frequency for each display group.
+  - `compute_spectrogram()` — main entry point: normalize → frame → Hann window → rfft → dBFS → downsample → `SpectrogramData`.
+  - Default parameters: `frame_length=2048` (Δf ≈ 21.5 Hz at 44.1 kHz), `hop_length=512` (75% overlap, Δt ≈ 11.6 ms at 44.1 kHz).
+- FastAPI endpoint: `POST /api/audio/spectrogram` — returns metadata plus display-ready 2-D magnitude matrix.
+- `frontend/src/components/audio/spectrogram-viewer.tsx` — canvas-based spectrogram heat-map with:
+  - Perceptually-ordered colour gradient: deep navy → indigo → purple → cyan → amber → white.
+  - X axis: time (seconds). Y axis: frequency (Hz), low-freq at bottom.
+  - Subtle time and frequency grid overlay.
+  - Per-channel rows matching WaveformViewer and SpectrumViewer panel design.
+- `frontend/src/lib/api.ts` — added `SpectrogramChannel`, `SpectrogramData`, `AudioSpectrogramResponse` types and `fetchSpectrogram()` function.
+- `frontend/src/components/audio/audio-uploader.tsx` — all three requests (`analyze`, `spectrum`, `spectrogram`) now run in parallel via `Promise.allSettled`. `SpectrogramViewer` renders below the `SpectrumViewer` in the Analysis Panel.
+- 63 new backend tests in `tests/test_stft.py` covering: Hann window properties, normalization, STFT shape/dtype, silence, 1 kHz sine peak-bin detection, short-signal padding, dBFS conversion, time/frequency downsampling (peak-preserving), axis builders, and full integration (mono/stereo, metadata, display caps, error handling, multiple sample rates).
+- **Total backend tests: 145 passing (82 pre-existing + 63 new)**.
+
+### Module 06 — Audio Filtering
+
+- `backend/dsp_core/filtering.py` — comprehensive frequency-selective filtering implementation:
+  - **IIR Families**: Butterworth, Chebyshev I, Chebyshev II, Elliptic, Bessel. Always returns Second-Order Sections (SOS) for numerical stability up to N=20.
+  - **FIR Families**: Window-method FIR and Parks-McClellan equiripple FIR.
+  - **Filter Types**: Low-pass, high-pass, band-pass, band-stop, and Peaking EQ (biquad).
+  - **Zero-Phase Offline Processing**: Uses `sosfiltfilt` (IIR) and `filtfilt` (FIR) to prevent phase shift.
+  - **Theoretical Frequency Response**: Calculates magnitude response using `freqz`/`sosfreqz` for display in the frontend.
+- FastAPI endpoints:
+  - `POST /api/audio/filter/design` — validates parameters and returns theoretical magnitude response.
+  - `POST /api/audio/filter/apply` — applies the zero-phase filter to the audio and returns a WAV file for playback.
+- `frontend/src/app/playground/filtering/page.tsx` — dedicated filter workspace with:
+  - Custom UI controls: `NumInput` with chevron steppers, `FilterTypeGrid`, `PillGroup` for design families.
+  - Live theoretical frequency response chart using Recharts.
+  - Dynamic parameter exposure (e.g. hiding ripple/attenuation if Butterworth is selected).
+  - Toast notifications and "Play Filtered" / "Download Filtered WAV" audio integration.
+- Extensive backend tests covering zero-phase outputs, FIR tap counts, Nyquist validations, error raising, parameter combinations, and peaking EQ constraints.
+
 
 ### Bin timestamp convention
 
@@ -228,7 +301,39 @@ Example success response (abbreviated):
 
 The full sample array is not returned to the frontend. Samples remain on the backend for future DSP modules.
 
-## Run The Backend
+### `POST /api/audio/spectrum` (Module 04)
+
+Receives a multipart form upload with field name `file`.
+
+Example success response (abbreviated):
+
+```json
+{
+  "status": "spectrum_computed",
+  "metadata": { "...same as /analyze..." },
+  "spectrum": {
+    "n_channels": 1,
+    "n_fft_full": 16000,
+    "n_display_bins": 1024,
+    "frequency_resolution_hz": 1.0,
+    "nyquist_hz": 8000.0,
+    "duration_seconds": 1.0,
+    "sample_rate_hz": 16000,
+    "channels": [
+      {
+        "channel_index": 0,
+        "bins": [
+          { "frequency_hz": 3.906, "magnitude_dbfs": -72.1 },
+          { "frequency_hz": 11.719, "magnitude_dbfs": -68.4 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**`n_fft_full`** is the full signal length N, giving frequency resolution `Δf = Fs / N`. The raw FFT has `N//2 + 1` one-sided bins; these are display-reduced to at most 1024 `n_display_bins` before being sent to the frontend. `magnitude_dbfs` is dBFS (0 dBFS = full-scale amplitude); values are negative for real-world signals.
+
 
 From the repository root:
 
@@ -303,55 +408,109 @@ npm run build
 npm audit --audit-level=high
 ```
 
-Verification performed during Module 03:
+Verification performed during Module 04:
 
-- `backend`: `python -m pytest` passed with **40 tests** (7 Module 01/02 + 33 Module 03).
+- `backend`: `python -m pytest` passed with **82 tests** (40 Module 01-03 + 42 Module 04).
 - `frontend`: `npm run lint` passed (exit code 0).
-- `frontend`: `npm run build` passed (exit code 0, compiled in 37.0s, TypeScript passed in 2.5s).
-- Manual smoke check: `POST /api/audio/analyze` with a generated WAV returned correct metadata and 1500 waveform bins.
-- Manual smoke check: `POST /api/audio/upload` (Module 02 endpoint) still returns metadata only without waveform data.
-- Backend tests continue to emit a Python 3.14 deprecation warning from FastAPI/Starlette internals; tests still pass.
+- `frontend`: `npm run build` passed (exit code 0, TypeScript passed).
+- Manual smoke check: `POST /api/audio/spectrum` with a generated 440 Hz WAV returned correct metadata and 1024 display bins, with peak near 440 Hz.
+- Manual smoke check: `POST /api/audio/analyze` (Module 03 endpoint) still returns metadata and waveform data correctly.
+- Long audio structural test (1,469,952 samples) confirmed ≤ 1024 display bins returned.
 
 ## Module Status
 
 - [x] Module 01 - Project Skeleton
 - [x] Module 02 - Audio Upload and Loading
 - [x] Module 03 - Waveform Visualization
-- [ ] Module 04 - Fourier Analysis
+- [x] Module 04 - Fourier Analysis
 - [ ] Module 05 - Spectrogram / STFT
 - [ ] Module 06 - Digital Filters
 - [ ] Module 07 - Noise Removal
 - [ ] Module 08 - Voice Activity Detection
-- [ ] Module 09 - Voice Tweaks
-- [ ] Module 10 - Adaptive Noise Cancellation
-- [ ] Module 11 - Desktop Application
-- [ ] Module 12 - Virtual Microphone / Audio Routing
-- [ ] Module 13 - Real-Time Noise Suppression
-- [ ] Module 14 - Real-Time Voice Effects
+
+> **Note:** Modules 09 through 14 (Voice Tweaks, ANC, Desktop Application, Audio Routing, Real-Time Processing) have been removed from the current project scope due to time constraints.
+
+## DSP Concepts Introduced in Module 04
+
+**DFT (Discrete Fourier Transform)**
+
+Transforms a discrete-time signal `x[n]` into the frequency domain:
+
+```
+X[k] = Σ_{n=0}^{N-1}  x[n] · exp(-j 2πkn/N)
+```
+
+Produces N complex coefficients. Each coefficient `X[k]` corresponds to frequency `f[k] = k·Fs/N`.
+
+**FFT (Fast Fourier Transform)**
+
+The FFT computes the DFT in O(N log N) instead of O(N²). The result is mathematically identical. Rigel uses `np.fft.rfft` which exploits real-signal symmetry to return only the positive-frequency (one-sided) coefficients.
+
+**Frequency Bins and Resolution**
+
+The DFT of a length-N signal at sample rate Fs produces N frequency bins. Each bin k corresponds to:
+```
+f[k] = k · Fs / N      Hz
+```
+Frequency resolution: `Δf = Fs / N`. Longer signals give finer resolution.
+
+**One-Sided Spectrum**
+
+For a real-valued signal the DFT is conjugate-symmetric. Only the positive-frequency bins (k = 0 … N/2) carry unique information. Interior bins are multiplied by 2 to preserve the correct amplitude after discarding the mirror bins.
+
+**Magnitude and dBFS**
+
+The magnitude of bin k is `|X[k]|`. After one-sided amplitude normalisation, the result is `A[k]`. Expressed in dBFS (decibels relative to digital full scale):
+```
+magnitude_dBFS = 20 · log10(A[k] + ε)
+```
+0 dBFS = full-scale amplitude. This is NOT acoustic sound-pressure dB.
+
+**Display Reduction**
+
+Long audio can produce hundreds of thousands of raw FFT bins. The display spectrum is reduced to at most 1024 equal-width bins, keeping the peak dBFS in each bin (peak-preserving, analogous to Module 03 waveform decimation).
 
 ## Important Decisions
 
 - FastAPI remains the API/application layer.
 - WAV decoding is isolated in `backend/dsp_core/audio_loader.py`.
-- Waveform decimation is isolated in `backend/dsp_core/waveform.py`. Both DSP modules are framework-independent.
-- Peak-envelope (min/max) decimation was chosen over mean-based resampling to preserve transient peaks.
-- 1 500 bins was selected as the default, balancing visual resolution and payload size.
-- Bin timestamps represent the **start time** of each bin chunk. This convention is consistent across the backend, `WaveformBin.time_seconds`, the canvas renderer, and the click-to-seek handler.
-- Stereo audio is rendered as two independent L/R rows rather than mixed to mono.
-- Audio playback uses `URL.createObjectURL(file)` on the already-uploaded browser `File` object. No backend streaming endpoint was introduced because the file is already in browser memory.
+- Waveform decimation is isolated in `backend/dsp_core/waveform.py`.
+- Spectrum computation is isolated in `backend/dsp_core/spectrum.py`.
+- STFT spectrogram computation is isolated in `backend/dsp_core/stft.py`.
+- Filter design and processing is isolated in `backend/dsp_core/filtering.py`. All DSP modules are framework-independent.
+- Peak-envelope (min/max) decimation for waveforms; peak-preserving linear binning for spectrum display reduction; peak-preserving group-max for spectrogram time/frequency downsampling.
+- Default STFT parameters: `frame_length=2048` (Δf ≈ 21.5 Hz at 44.1 kHz), `hop_length=512` (75% overlap).
+- Hann windowing was chosen (rather than rectangular) to suppress spectral leakage at frame boundaries.
+- The spectrogram magnitude is normalized per-frame by `L` (not one-sided doubled), which is the correct convention for visualization — the goal is relative energy distribution, not amplitude matching.
+- `compute_dft_naive()` implements the DFT equation with two explicit loops for education. It is tested but never called in production.
+- Samples are normalized to float32 amplitude before FFT/STFT so spectra have a consistent dBFS reference (0 dBFS = full scale).
+- Audio playback uses `URL.createObjectURL(file)` on the already-uploaded browser `File` object. No backend streaming endpoint was introduced.
 - The public UI continues to use no internal module numbers, backend status, DSP-core status, or development milestones.
-- Semantic frontend theme tokens are used so a future dark mode can be added without rewriting component color classes.
-- Module 02's `/api/audio/upload` endpoint is preserved for backward compatibility and testing. The primary product flow now uses `/api/audio/analyze`.
 
 ## Known Limitations
 
 - Only WAV upload/loading is supported.
 - Uploaded files are processed immediately and not persisted.
 - Audio playback depends on the browser's WAV decoding capability (all modern browsers support WAV PCM).
-- The waveform canvas reads CSS custom properties at draw time. If the canvas is inside a shadow DOM or non-standard CSS context, colour tokens may not resolve correctly.
-- No FFT, spectrogram, filtering, denoising, VAD, ANC, voice effects, desktop app, or AI functionality exists yet.
-- The frontend expects the backend to be running separately during development.
+- The frequency spectrum is computed over the full signal (global FFT, no windowing). For non-periodic signals spectral leakage occurs at the analysis boundary. The STFT spectrogram (Module 05) uses a Hann window per frame, which addresses per-frame leakage.
+- The frequency axis is linear. A log-frequency display option may be added in a future refinement.
+- STFT computation is sequential (one frame at a time in Python). For very long files, server response time may be noticeable. Vectorized framing could be introduced if needed.
+- No filtering, denoising, VAD, ANC, voice effects, desktop app, or AI functionality exists yet.
+
+## Module Status
+
+```text
+[x] Module 01 — Project Skeleton
+[x] Module 02 — Audio Upload and Loading
+[x] Module 03 — Waveform Visualization
+[x] Module 04 — Fourier Analysis
+[x] Module 05 — Spectrogram / STFT
+[x] Module 06 — Digital Filters
+[ ] Module 07 — Noise Removal           ← current
+[ ] Module 08 — Voice Activity Detection
+[ ] Module 09 — Voice Tweaks
+```
 
 ## Next Module
 
-**Module 04 - Fourier Analysis** is next. It should add DFT/FFT computation in the DSP core, a frequency-domain endpoint, and a frequency spectrum display in the frontend. Do not begin Module 04 until explicitly instructed.
+**Module 07 — Noise Removal** — implement basic noise estimation, spectral subtraction, and Wiener filtering. Do not begin Module 07 until explicitly instructed.

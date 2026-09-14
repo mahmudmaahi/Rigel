@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: ["class", '[data-theme="dark"]'],
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -25,6 +26,26 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-geist-sans)", "Inter", "sans-serif"],
+      },
+      keyframes: {
+        "shine-pulse": {
+          "0%": { "background-position": "0% 0%" },
+          "50%": { "background-position": "100% 100%" },
+          "to": { "background-position": "0% 0%" },
+        },
+        "marquee-left": {
+          "0%": { transform: "translateX(0%)" },
+          "100%": { transform: "translateX(-33.333%)" }, // Because we triplicated the list
+        },
+        "marquee-right": {
+          "0%": { transform: "translateX(-33.333%)" },
+          "100%": { transform: "translateX(0%)" },
+        },
+      },
+      animation: {
+        "shine-pulse": "shine-pulse var(--shine-pulse-duration) infinite linear",
+        "marquee-left": "marquee-left 30s linear infinite",
+        "marquee-right": "marquee-right 30s linear infinite",
       },
     },
   },

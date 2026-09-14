@@ -242,31 +242,53 @@ The following is the project's canonical module order.
 
 ## Phase 2 --- Classical DSP
 
-### Module 06 --- Digital Filters
+### Module 06 --- Audio Filtering
 
-Implement and visualize: - low-pass - high-pass - band-pass - FIR - IIR
-where appropriate
+Document the progression of frequency-selective filtering implementation:
 
-Show: - original signal - filtered signal - frequency response -
-relevant parameters
+1. **Basic Frequency-Selective Filtering**
+2. **Butterworth:** Maximally flat magnitude response in the passband, no passband ripple, relatively smooth response. Good general-purpose starting point.
+3. **Chebyshev Type I:** Introduces passband ripple but achieves a sharper transition than Butterworth for a given order. Useful when transition sharpness matters.
+4. **Chebyshev Type II:** Flat passband, but has stopband ripple. Sharper transition than Butterworth for comparable constraints.
+5. **Elliptic:** Ripple in both passband and stopband. Sharpest transition for a given order among these classical designs. More complicated response, treated as an advanced filter option.
+6. **Bessel:** Approximately maximally flat group delay. Good phase/time-domain behavior, but poorer magnitude selectivity compared with sharper filters.
+7. **Numerical Stability (SOS/Biquad):** Direct-form polynomial implementations of high-order IIR filters suffer numerical problems. The implementation must favor numerically stable Second-Order Sections (SOS)/biquad-style processing.
+8. **FIR Window-Designed Filters:** Connects naturally with Module 05 windowing knowledge. FIR provides exact linear-phase designs and predictable phase characteristics.
+9. **Parks-McClellan / Equiripple FIR:** Advanced FIR design method.
+10. **Practical Audio Filters:** Band-pass, notch, parametric EQ, and cascaded biquads exposing meaningful parameters rather than raw polynomial coefficients.
+
+There is no universally "best" filter. The correct choice depends on passband requirements, stopband requirements, transition width, phase/group-delay requirements, and numerical stability. Do not implement any of this now; this is a future roadmap.
 
 ### Module 07 --- Noise Removal
 
-Progressively implement: 1. Simple filtering-based noise reduction 2.
-Noise estimation 3. Spectral subtraction 4. Wiener filtering if feasible
+Document the progressive noise removal implementation focusing on spectral/statistical methods (single-channel/stereo audio enhancement):
 
-The algorithm must be explainable mathematically.
+1. **Basic Frequency Filtering:** Use ordinary filters when noise is frequency-localized (e.g. low-frequency rumble $\to$ high-pass, high-frequency hiss $\to$ low-pass, narrow interference $\to$ notch). Explicitly state that filtering is NOT a general noise-removal solution as it damages desired speech/music when noise overlaps the signal spectrum.
+2. **Noise Estimation:** Estimate noise power spectrum $P_N(k)$ from noise-dominated frames (using STFT). Accurate noise estimation is central to successful spectral enhancement.
+3. **Improved Spectral Subtraction:** Instead of naive $|S| = |Y| - |N|$, implement oversubtraction factor, spectral floor, temporal/frequency smoothing, and noise tracking. Must explicitly document the classic limitation: "musical noise" artifacts.
+4. **Wiener Filtering:** A more principled statistical approach. The basic gain is $H(k) = P_S(k) / (P_S(k) + P_N(k))$, where $P_S(k)$ is estimated clean-signal power and $P_N(k)$ is estimated noise power.
+5. **MMSE-STSA / log-MMSE:** Statistically motivated speech-enhancement methods that estimate the clean speech spectral amplitude (or its logarithm) rather than simply subtracting noise. These are advanced and significantly more mathematically involved than subtraction.
+6. **IMCRA / OM-LSA (If feasible):** Improved Minima Controlled Recursive Averaging and Optimally Modified Log-Spectral Amplitude estimators as advanced/stretch goals.
 
-### Module 08 --- Voice Activity Detection
+**IMPORTANT NOISE-REMOVAL PRINCIPLES:**
+- Explicitly exclude LMS, NLMS, RLS, adaptive noise cancellation, and reference-microphone ANC from this roadmap. We will NOT implement adaptive noise cancellation.
+- There is no universally perfect noise-removal algorithm. Performance depends on noise type, stationarity, SNR, overlap, and quality of noise estimation.
 
-Start with classical methods: 1. frame-based processing 2. short-time
-energy 3. zero-crossing rate 4. spectral features where useful
+### Module 08 --- Voice Activity Detection (VAD)
 
-The frontend should show: - speech/non-speech timeline - speech
-segments - speech duration - option to extract speech-only audio
+Document VAD as a progressively advanced module:
 
-VAD works perfectly well on uploaded files; it does not require
-real-time audio.
+1. **Short-Time Energy:** $E_m = \sum x_m[n]^2$. Basic speech/non-speech indicator. Weaknesses: background noise has high energy, quiet speech missed, threshold depends on recording conditions.
+2. **Zero-Crossing Rate (ZCR):** Complementary feature. Helps distinguish certain signal characteristics but is not sufficient by itself.
+3. **Spectral Features:** Derive spectral energy, spectral centroid, spectral flux, spectral entropy, and band-energy ratios from the STFT infrastructure. Combine multiple features rather than relying on one arbitrary threshold.
+4. **Likelihood / Statistical Classification:** Investigate likelihood-ratio testing.
+5. **GMM / Statistical Modeling:** Gaussian/GMM-based speech-vs-noise modeling to calculate the probability a frame is speech.
+6. **HMM / Temporal Modeling:** Hidden Markov Models.
+7. **Temporal Smoothing / State Modeling:** Introduce hysteresis, hangover time, minimum speech duration, and minimum silence duration to prevent rapid flipping between speech and silence.
+8. **Comparison with WebRTC VAD:** Benchmark against established implementations like WebRTC VAD.
+9. **Optional Comparison against Silero VAD:** If dependency/privacy constraints allow, benchmark against modern neural VAD.
+
+The educational goal is to compare hand-built classical DSP VAD vs statistical VAD vs modern neural VAD. Do not implement these now.
 
 ------------------------------------------------------------------------
 
@@ -335,27 +357,15 @@ replacing the classical DSP architecture.
 
 # 7. Current Project Scope
 
-At the beginning, the only goal is:
+Our current scope covers Phase 1 through Phase 3 (Modules 01 to 09).
 
-``` text
-Upload Audio
-      |
-      v
-Read Digital Signal
-      |
-      v
-Display Waveform
-      |
-      v
-Play Audio
+```text
+Upload Audio → Waveform → Frequency Analysis → Spectrogram → Filters → Denoising → VAD → Voice Tweaks
 ```
 
-Do NOT implement FFT, spectrogram, denoising, VAD, voice effects, ANC,
-or AI in the first module unless explicitly requested.
+Do NOT implement modules beyond Phase 3 (like ANC, real-time routing, or AI) unless explicitly requested.
 
-The purpose of the first module is to establish the foundation
-correctly.
-
+The focus is building robust, explainable DSP implementations for each step in this pipeline while keeping the UI professional.
 ------------------------------------------------------------------------
 
 # 8. Documentation Rule --- VERY IMPORTANT
@@ -463,32 +473,15 @@ Do not rely on hidden context or previous conversations.
 
 # 11. Current Task
 
+We have completed Phase 1 (Foundation) and Module 06 (Audio Filtering).
+
 We are currently at:
 
-**Module 01 --- Project Skeleton**
+**Module 07 — Noise Removal**
 
-The first implementation task should establish:
+The current implementation task should establish noise removal techniques (e.g. spectral subtraction, Wiener filtering) in the DSP core and their controls in the frontend.
 
-``` text
-intelligent-audio-platform/
-│
-├── frontend/
-│
-├── backend/
-│
-├── README.md
-├── AGENT_INSTRUCTIONS.md
-└── .gitignore
-```
-
-The exact internal structure can be created progressively.
-
-The first implementation should: - initialize the Next.js frontend -
-initialize the Python/FastAPI backend - establish a minimal
-health/status API - establish frontend → backend communication - provide
-clear development/run instructions - update README.md
-
-Do not implement audio processing yet.
+Do not implement VAD or voice effects yet.
 
 ------------------------------------------------------------------------
 
@@ -842,28 +835,33 @@ The architecture must allow future modules to be added without rewriting existin
 
 # 19. Current Development State
 
-Module 01 — Project Skeleton has been completed.
+Modules 01 through 04 have been completed.
 
 ```text
 Project: Rigel
 Team: Orion
 
 Current Phase:
-Phase 1 — Foundation
+Phase 2 — Classical DSP
 
 Completed:
 Module 01 — Project Skeleton
+Module 02 — Audio Upload and Loading
+Module 03 — Waveform Visualization
+Module 04 — Fourier Analysis
+Module 05 — Spectrogram / STFT
+Module 06 — Audio Filtering
 
 Current Module:
-Module 02 — Audio Upload and Loading
+Module 07 — Noise Removal
 
 Next:
-Module 03 — Waveform Visualization
+Module 08 — Voice Activity Detection (VAD)
 ```
 
-The project must now proceed with **Module 02 only**.
+The project must now proceed with **Module 07 only**.
 
-Do not implement Module 03 or any later module unless explicitly instructed.
+Do not implement Module 08 or any later module unless explicitly instructed.
 
 # 20. README Requirement
 
@@ -980,239 +978,16 @@ Start with the digital signal itself.
 
 ---
 
-# 26. Cumulative UI Feedback Addendum
 
-## 26.1 Rigel Title Prominence
+# 24. Public UI and Design Requirements
 
-The public application title **Rigel** must be visually important and immediately noticeable.
+The web application must maintain a **sophisticated, polished, modern UI**. It must look like a premium audio-processing product, not a development dashboard.
 
-Do not treat the project name as a small, secondary header label. The Rigel identity should be a first-viewport signal with strong typographic presence, while still preserving the premium black-and-white product direction.
+1. **No Internal State in Public UI:** Do not expose module numbers, backend connection status, or internal architecture boundaries to the user.
+2. **Visual Identity:** Maintain the clean, black-and-white, minimal, editorial design. Use high-quality typography.
+3. **Rigel Prominence:** The "Rigel" title must be visually important and immediately noticeable in the first viewport.
+4. **Theme-Ready:** Use semantic tokens (background, foreground, muted, etc.) and avoid hardcoded literal colors to ensure dark/light modes work flawlessly.
+5. **Living Interface:** Preserve the interactive visual system, including ambient signal movement, micro-interactions, smooth hover states, and precision coordinate markers.
+6. **Professional Copywriting:** Use natural audio-engineering terminology (e.g., "Audio Workspace", "Signal Matrix") rather than academic or implementation-heavy phrases.
 
-# 24. Cumulative UI Feedback — Apply From Next Development Session
-
-This section contains cumulative feedback from the human developer after reviewing the current running application.
-
-The coding agent must read and follow this section in every future development session. It is part of the project's current requirements.
-
-## 24.1 Public Product UI vs Development Information
-
-The current UI exposes information such as:
-- `PROJECT SKELETON ONLINE`
-- `MODULE 01`
-- `FastAPI connection`
-- `ONLINE`
-- `AVAILABLE`
-- `BOUNDARY`
-- `DSP core is isolated`
-- `NEXT — Audio Upload and Loading`
-
-These are useful for development/testing, but they should NOT be part of the polished public-facing product interface.
-
-The public website should communicate the product, not the internal implementation process.
-
-Do not expose internal development terminology in the normal public UI, including module numbers, project skeleton status, backend/API status, DSP-core availability, internal architecture boundaries, "next module" indicators, or development milestones.
-
-This information may remain in `README.md`, logs, API responses, tests, developer tooling, or development-only diagnostics.
-
-The user should feel that they are visiting a real audio-processing product, not a software-development dashboard.
-
-## 24.2 Public Website Design Direction
-
-The current interface is a good starting foundation, but it is currently too minimal for the intended final product.
-
-The visual direction should be elevated substantially.
-
-The goal is:
-
-> A sophisticated, premium audio-processing product with a strong editorial/technical aesthetic.
-
-The typography style used in the large headline:
-
-> "Intelligent audio, built from first principles."
-
-is liked and should be preserved or used as inspiration.
-
-Desired qualities:
-- sophisticated
-- premium
-- minimal but not empty
-- editorial
-- technical
-- intentional
-- high-quality typography
-- strong visual hierarchy
-- generous whitespace
-- carefully designed cards/panels
-- subtle motion
-- excellent interaction states
-- responsive
-- polished on desktop and mobile
-
-The application should look credible as a serious portfolio project, research/demo platform, and future commercial audio tool.
-
-It should NOT look like a generic admin dashboard, a default shadcn starter, a basic university assignment, or a collection of unrelated cards.
-
-## 24.3 Black-and-White Design Must Be Theme-Ready
-
-The current visual identity is black and white, but it must be implemented so future dark mode is effortless.
-
-Do NOT hard-code black and white throughout individual components.
-
-Use semantic design tokens / CSS variables and the existing shadcn/Tailwind theme system where appropriate.
-
-Conceptually:
-
-```text
-Light Theme
-background → near-white
-foreground → near-black
-card → white
-card-foreground → near-black
-border → light gray
-muted → gray
-muted-foreground → dark gray
-
-Dark Theme
-background → near-black
-foreground → near-white
-card → dark gray/near-black
-card-foreground → near-white
-border → dark gray
-muted → gray
-muted-foreground → light gray
-```
-
-Prefer semantic tokens such as:
-
-```text
-background
-foreground
-card
-card-foreground
-border
-muted
-muted-foreground
-primary
-primary-foreground
-accent
-accent-foreground
-```
-
-Avoid repeatedly using literal values such as `bg-black`, `text-white`, `bg-white`, `text-black`, or `border-black` where theme-aware semantic tokens are appropriate.
-
-A future dark-mode implementation should primarily require changing theme token values rather than rewriting individual components.
-
-Do not introduce a separate hard-coded color system.
-
-## 24.4 Public Information Architecture
-
-The landing page should eventually communicate something closer to:
-
-```text
-RIGEL
-
-Intelligent audio,
-built from first principles.
-
-Analyze, enhance, and transform audio
-through transparent signal processing.
-
-[ Upload Audio ]
-```
-
-The exact copy is not fixed; the concept is.
-
-The public interface should gradually evolve toward product-oriented navigation such as:
-
-```text
-Rigel
-
-Analyze
-Enhance
-Transform
-About
-```
-
-or another equally coherent structure.
-
-Do not expose the internal module roadmap as primary navigation.
-
-The product should communicate capabilities naturally as they become available.
-
-## 24.5 Module Development Must Not Break Product Identity
-
-Although development is strictly incremental, the public website should not look like a new unrelated application after every module.
-
-Every new module must integrate into the same design system.
-
-For example:
-
-```text
-Module 02 — Audio Upload
-        ↓
-integrates into existing Rigel UI
-
-Module 03 — Waveform
-        ↓
-integrates into existing Rigel UI
-
-Module 04 — Frequency Analysis
-        ↓
-integrates into existing Rigel UI
-```
-
-Typography, spacing, component language, animations, and semantic colors should remain consistent.
-
-## 24.6 Development Status Still Matters — But Keep It Out of the Public UI
-
-The project must continue documenting module progress in:
-- `README.md`
-- `AGENT_INSTRUCTIONS.md`
-- tests
-- source code
-- development-only diagnostics
-
-The public UI does not need to say:
-
-```text
-Module 01
-Backend Online
-DSP Core Available
-```
-
-Instead, it should show what the user can actually do.
-
-As functionality grows, the interface should transition naturally from:
-
-```text
-Project foundation
-    ↓
-Audio analysis tool
-    ↓
-Audio enhancement platform
-    ↓
-Full intelligent audio platform
-```
-
-## 24.7 Current UI Revision Scope
-
-This feedback does NOT change the module order.
-
-Module 01 is complete. The next development work is **Module 02 — Audio Upload and Loading**.
-
-The public UI refinements described above are requirements that should remain in effect while implementing Module 02. In particular:
-
-1. Do not reintroduce internal development/status cards into the public interface.
-2. Do not show module numbers, backend status, DSP-core status, or internal architecture as normal product UI.
-3. Preserve the strong editorial typography and sophisticated black-and-white product identity.
-4. Keep the theme-token architecture ready for future dark mode.
-5. Integrate the audio-upload experience into the existing Rigel product UI rather than creating a separate dashboard.
-6. Do not implement Module 03 or later functionality.
-
-## 24.8 Important Rule for Future Agents
-
-Whenever the human developer provides new UI or architecture feedback, append it to this section as a new cumulative subsection rather than silently replacing older requirements.
-
-The newest subsection has priority if it explicitly changes an older requirement.
-
-The coding agent must read the entire cumulative feedback section before beginning future work.\n\n# 25. CURRENT TASK — MODULE 02: AUDIO UPLOAD AND LOADING\n\n**Only implement Module 02.**\n\nDo not implement Module 03 or any later module.\n\n## Goal\n\nAllow a user to upload an audio file from the Rigel web application and have the backend:\n\n```text\nAudio File\n    ↓\nFastAPI\n    ↓\nAudio Loader\n    ↓\nDigital Samples\n    ↓\nNumPy representation\n    ↓\nMetadata\n    ↓\nFrontend\n```\n\nThe user should be able to see that Rigel has successfully received and understood their audio file.\n\n## Frontend Scope\n\nCreate a polished audio-upload experience integrated into the existing Rigel design system.\n\nThe UI should allow the user to:\n\n- select an audio file\n- preferably drag and drop an audio file\n- see the selected filename\n- see upload/loading state\n- receive success/error feedback\n- view returned audio metadata\n\nThe UI must not expose internal development information such as module numbers, API status, DSP-core status, or development milestones.\n\nDo not implement waveform visualization yet. Waveform visualization belongs to Module 03.\n\n## Backend Scope\n\nCreate an appropriate FastAPI endpoint for audio upload.\n\nThe endpoint should:\n\n1. Receive the uploaded file.\n2. Validate that it is an audio file.\n3. Safely process the uploaded file.\n4. Load the audio.\n5. Convert the audio samples into a suitable NumPy representation.\n6. Extract useful metadata.\n\nAt minimum, investigate/report:\n\n- filename\n- file format/type where available\n- sample rate\n- number of channels\n- number of samples\n- duration\n- dtype/sample representation where appropriate\n\nReturn structured JSON to the frontend.\n\nDo not return the complete audio sample array to the frontend unless there is a concrete architectural reason to do so. The samples belong to the backend/DSP processing layer for now.\n\n## Audio Representation\n\nThe important conceptual flow is:\n\n```text\nAudio File\n     ↓\nAudio Decoder / Loader\n     ↓\nDigital Samples\n     ↓\nNumPy Array\n```\n\nFor example, conceptually:\n\n```python\nsample_rate = 16000\n\nsignal = np.array([\n    123,\n    145,\n    132,\n    ...\n])\n```\n\nThe implementation should document the actual representation being used.\n\nDo not implement the waveform yet.\n\n## Audio Format Scope\n\nPrefer WAV as the initial supported format because uncompressed PCM WAV is directly useful for DSP education.\n\nIf the selected audio library reliably supports additional formats without introducing unnecessary dependencies, they may be supported.\n\nDocument exactly which formats are supported.\n\nDo not introduce a large media-processing dependency merely to support many formats.\n\n## Error Handling\n\nHandle cases such as:\n\n- no file selected\n- unsupported file type\n- malformed audio\n- empty file\n- decoding failure\n- excessively large file if a reasonable limit is needed\n\nReturn useful API errors.\n\nThe frontend should present user-friendly messages rather than raw FastAPI/Python stack traces.\n\nDo not expose internal filesystem paths or sensitive implementation details.\n\n## Storage\n\nDo not build permanent user-file storage yet.\n\nIf temporary storage is needed:\n\n- use a safe temporary location\n- avoid hard-coded machine-specific paths\n- clean up temporary files where appropriate\n\nDo not introduce databases, authentication, cloud storage, or user accounts in this module.\n\n## DSP Boundary\n\nKeep audio loading separate from future DSP algorithms:\n\n```text\nFastAPI\n   ↓\nAudio Service / Loader\n   ↓\nNumPy Signal\n   ↓\nDSP Core\n```\n\nAudio decoding logic should not be placed inside future DSP algorithm classes.\n\nThe DSP core should eventually receive something conceptually like:\n\n```text\nsignal + sample_rate + metadata\n```\n\nwithout knowing that the signal originally came from a browser upload.\n\n## Testing\n\nAdd appropriate tests for:\n\n- valid audio upload\n- metadata extraction\n- invalid/unsupported upload\n- API response structure\n- basic sample representation\n\nTests should not depend on the human developer's personal audio files. Create small deterministic fixtures if needed.\n\nRun relevant backend tests and frontend checks such as lint/build.\n\n## Strict Boundary\n\nDo NOT implement:\n\n- waveform\n- FFT\n- frequency spectrum\n- spectrogram\n- STFT\n- filters\n- noise removal\n- VAD\n- voice effects\n- ANC\n- desktop application\n- AI\n\nThe only goal of this module is:\n\n> **Upload audio → load it correctly → understand its metadata → show the result.**\n\n## Definition of Done\n\nModule 02 is complete only when:\n\n- a user can upload a supported audio file\n- FastAPI receives it\n- Python loads it successfully\n- samples are represented correctly in NumPy\n- metadata is extracted\n- frontend receives structured metadata\n- UI presents the result cleanly\n- invalid uploads are handled gracefully\n- relevant tests pass\n- frontend lint/build pass\n- README is updated\n- no Module 03 functionality has been implemented\n\nThen the project is ready for:\n\n**Module 03 — Waveform Visualization**\n\nStop after Module 02.\n
+Do not break the existing design identity when adding new modules. New components must perfectly integrate into the existing cohesive product.

@@ -3,28 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 interface AudioPlayerProps {
-  /** Object URL created by the caller via URL.createObjectURL(file). */
   src: string;
   duration: number;
-  /** Called on every timeupdate event so the parent can sync the waveform. */
   onTimeUpdate?: (currentTime: number) => void;
-  /** Called when the audio ends. */
   onEnded?: () => void;
-  /**
-   * Programmatic seek target.  When this changes the player will seek to the
-   * given time.  Use this to wire click-to-seek from WaveformViewer.
-   */
   seekTarget?: number;
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function formatTime(seconds: number): string {
   const clamped = Math.max(0, seconds);
@@ -32,10 +17,6 @@ function formatTime(seconds: number): string {
   const s = Math.floor(clamped % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 
 export function AudioPlayer({
   src,
@@ -50,8 +31,6 @@ export function AudioPlayer({
   const [isMuted, setIsMuted] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const prevSeekTarget = useRef<number | undefined>(undefined);
-
-  // ---- Audio element event handlers ----
 
   const handleTimeUpdate = useCallback(() => {
     const audio = audioRef.current;
@@ -70,7 +49,6 @@ export function AudioPlayer({
     setIsReady(true);
   }, []);
 
-  // ---- Programmatic seek from waveform click ----
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || seekTarget === undefined) return;
@@ -82,7 +60,6 @@ export function AudioPlayer({
     onTimeUpdate?.(seekTarget);
   }, [seekTarget, onTimeUpdate]);
 
-  // ---- Play / pause ----
   async function togglePlay() {
     const audio = audioRef.current;
     if (!audio) return;
@@ -95,13 +72,11 @@ export function AudioPlayer({
         await audio.play();
         setIsPlaying(true);
       } catch {
-        // Autoplay may be blocked; the user must interact first.
         setIsPlaying(false);
       }
     }
   }
 
-  // ---- Mute toggle ----
   function toggleMute() {
     const audio = audioRef.current;
     if (!audio) return;
@@ -109,22 +84,20 @@ export function AudioPlayer({
     setIsMuted(!isMuted);
   }
 
-  // ---- Seek slider ----
-  function handleSliderChange(event: React.ChangeEvent<HTMLInputElement>) {
+  function handleSliderInput(event: React.FormEvent<HTMLInputElement>) {
     const audio = audioRef.current;
     if (!audio) return;
-    const t = parseFloat(event.target.value);
+    const t = parseFloat((event.target as HTMLInputElement).value);
     audio.currentTime = t;
     setCurrentTime(t);
     onTimeUpdate?.(t);
   }
 
-  // ---- Derived values ----
   const progress = duration > 0 ? currentTime / duration : 0;
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Hidden native audio element */}
+    <div className="flex flex-col gap-4">
+      {/* Hidden audio element */}
       <audio
         ref={audioRef}
         src={src}
@@ -134,12 +107,18 @@ export function AudioPlayer({
         onCanPlay={handleCanPlay}
       />
 
-      {/* Progress bar / seek slider */}
-      <div className="relative h-1 w-full bg-border">
-        <div
-          className="absolute left-0 top-0 h-full bg-foreground transition-none"
-          style={{ width: `${progress * 100}%` }}
-        />
+      {/* Seek Progress Bar */}
+      <div className="group relative flex h-6 w-full cursor-pointer items-center">
+        <div className="relative h-2 w-full rounded-full bg-white/10 backdrop-blur-sm transition-all group-hover:h-2.5">
+          <div
+            className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 shadow-[0_0_12px_rgba(99,102,241,0.5)] transition-all duration-200 ease-linear"
+            style={{ width: `${progress * 100}%` }}
+          />
+          <div 
+            className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)] transition-all duration-200 ease-linear scale-75 group-hover:scale-100"
+            style={{ left: `${progress * 100}%` }}
+          />
+        </div>
         <input
           type="range"
           min={0}
@@ -147,48 +126,42 @@ export function AudioPlayer({
           step={0.01}
           value={currentTime}
           disabled={!isReady}
-          onChange={handleSliderChange}
+          onInput={handleSliderInput}
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          aria-label="Seek"
+          aria-label="Seek audio"
         />
       </div>
 
-      {/* Controls row */}
+      {/* Control Buttons */}
       <div className="flex items-center gap-4">
-        {/* Play / Pause */}
         <button
           type="button"
           disabled={!isReady}
           onClick={() => void togglePlay()}
-          className="flex h-9 w-9 items-center justify-center border border-border bg-card transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 backdrop-blur-md text-white shadow-lg transition-all hover:bg-white/20 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={isPlaying ? "Pause" : "Play"}
-          id="audio-player-play-pause"
         >
           {isPlaying ? (
-            <Pause className="h-4 w-4" />
+            <Pause className="h-5 w-5" />
           ) : (
-            <Play className="h-4 w-4" />
+            <Play className="h-5 w-5 translate-x-0.5" />
           )}
         </button>
 
-        {/* Time display */}
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+        <span className="font-mono text-xs tabular-nums text-slate-300">
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
 
-        {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Mute */}
         <button
           type="button"
           onClick={toggleMute}
-          className="flex h-7 w-7 items-center justify-center text-muted-foreground transition hover:text-foreground"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/5 bg-white/5 text-slate-300 transition-all hover:border-white/10 hover:bg-white/10 hover:text-white"
           aria-label={isMuted ? "Unmute" : "Mute"}
-          id="audio-player-mute"
         >
           {isMuted ? (
-            <VolumeX className="h-4 w-4" />
+            <VolumeX className="h-4 w-4 text-red-400" />
           ) : (
             <Volume2 className="h-4 w-4" />
           )}

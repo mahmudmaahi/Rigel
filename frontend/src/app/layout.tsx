@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,8 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Rigel | Team Orion",
-  description: "A modular intelligent audio platform by Team Orion.",
+  title: "Rigel | Audio Signal Processing Platform by Team Orion",
+  description:
+    "From raw signals to pure clarity. Professional audio analysis with discrete-time DSP, real-time waveform rendering, and peak envelope visualization. Open source audio platform by Team Orion.",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({
@@ -25,7 +28,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body
+        className={`antialiased`}
+        style={{ fontFamily: "'Century Gothic', sans-serif" }}
+      >
         {children}
       </body>
     </html>

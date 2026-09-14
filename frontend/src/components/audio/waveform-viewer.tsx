@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { WaveformData } from "@/lib/api";
+import { createSymmetricColorMapGradient } from "@/lib/colors";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,24 +24,28 @@ interface WaveformViewerProps {
 /** Height of the time-axis tick area below each channel waveform. */
 const AXIS_HEIGHT = 24;
 /** Height of each channel's waveform canvas area. */
-const CHANNEL_HEIGHT = 80;
+const CHANNEL_HEIGHT = 140;
 /** Vertical gap between two channel rows (stereo). */
 const CHANNEL_GAP = 8;
 /** Horizontal padding inside the canvas. */
 const H_PAD = 0;
+/** Top padding for playhead handle. */
+const TOP_PAD = 10;
 
 /** Maximum number of time-axis tick labels to draw. */
 const MAX_TICKS = 8;
 
 // ---------------------------------------------------------------------------
-// Colour helpers
-// We read computed CSS custom properties at draw time so the waveform respects
-// the active Rigel theme (light / future dark mode) without hard-coding values.
+// Colour palette (matches SpectrumViewer)
 // ---------------------------------------------------------------------------
 
-function getCssVar(el: HTMLElement, name: string): string {
-  return getComputedStyle(el).getPropertyValue(name).trim();
-}
+const COLOURS = {
+  background:    "#0d0d18",
+  grid:          "rgba(255,255,255,0.07)",
+  axisLabel:     "rgba(255,255,255,0.40)",
+  channelLabel:  "rgba(255,255,255,0.55)",
+  playhead:      "rgba(129,140,248,0.85)", // indigo-400
+} as const;
 
 // ---------------------------------------------------------------------------
 // Draw helpers
@@ -85,6 +90,7 @@ function drawWaveform(
   const cssW = canvas.clientWidth;
   const nChannels = waveform.n_channels;
   const cssH =
+    TOP_PAD +
     nChannels * CHANNEL_HEIGHT +
     (nChannels - 1) * CHANNEL_GAP +
     AXIS_HEIGHT;
@@ -102,11 +108,14 @@ function drawWaveform(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
-  // ------ Colour tokens (read from CSS custom properties) ------
-  const fg = getCssVar(canvas, "--foreground") || "hsl(0 0% 3.9%)";
-  const muted = getCssVar(canvas, "--muted-foreground") || "hsl(0 0% 45.1%)";
-  const border = getCssVar(canvas, "--border") || "hsl(0 0% 89.8%)";
-  const accent = getCssVar(canvas, "--accent") || "hsl(0 0% 96.1%)";
+  // Fill background
+  ctx.fillStyle = COLOURS.background;
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  // ------ Colour tokens ------
+  const fg = COLOURS.playhead;
+  const muted = COLOURS.axisLabel;
+  const border = COLOURS.grid;
 
   const drawW = cssW - H_PAD * 2;
   const duration = waveform.duration_seconds;
@@ -125,31 +134,46 @@ function drawWaveform(
 
   // ------ Draw each channel ------
   waveform.channels.forEach((ch, chIdx) => {
-    const rowTop = chIdx * (CHANNEL_HEIGHT + CHANNEL_GAP);
+    const rowTop = TOP_PAD + chIdx * (CHANNEL_HEIGHT + CHANNEL_GAP);
     const midY = rowTop + CHANNEL_HEIGHT / 2;
     const halfH = CHANNEL_HEIGHT / 2 - 4; // 4 px breathing room
 
     // Centre line (zero amplitude reference).
     ctx.strokeStyle = border;
     ctx.lineWidth = 0.5;
+    ctx.setLineDash([2, 2]);
     ctx.beginPath();
     ctx.moveTo(H_PAD, midY);
     ctx.lineTo(H_PAD + drawW, midY);
     ctx.stroke();
+    ctx.setLineDash([]);
 
-    // Channel label for stereo.
+    // Channel label for stereo + technical reference marks.
+    ctx.fillStyle = muted;
+    ctx.font = `9px monospace`;
+    ctx.textAlign = "left";
     if (nChannels > 1) {
-      ctx.fillStyle = muted;
-      ctx.font = `10px system-ui, sans-serif`;
-      ctx.textAlign = "left";
-      ctx.fillText(chIdx === 0 ? "L" : "R", H_PAD + 4, rowTop + 12);
+      ctx.fillText(chIdx === 0 ? "CH_L" : "CH_R", H_PAD + 6, rowTop + 14);
+    } else {
+      ctx.fillText("CH_01 (MONO)", H_PAD + 6, rowTop + 14);
     }
+
+    // Amplitude scale indicators
+    ctx.textAlign = "right";
+    ctx.fillText("+1.0", H_PAD + drawW - 6, rowTop + 12);
+    ctx.fillText("0.0", H_PAD + drawW - 6, midY + 3);
+    ctx.fillText("-1.0", H_PAD + drawW - 6, rowTop + CHANNEL_HEIGHT - 6);
 
     // Peak-envelope bars.
     const bins = ch.bins;
     const nBins = bins.length;
 
-    ctx.fillStyle = fg;
+    // Create a symmetric vertical gradient for the waveform:
+    // rowTop (peak positive) -> teal/white
+    // midY (zero crossing) -> navy/purple
+    // rowBot (peak negative) -> teal/white
+    const gradient = createSymmetricColorMapGradient(ctx, 0, rowTop, 0, rowTop + CHANNEL_HEIGHT);
+    ctx.fillStyle = gradient;
 
     for (let i = 0; i < nBins; i++) {
       const bin = bins[i];
@@ -169,7 +193,7 @@ function drawWaveform(
 
   // ------ Time axis (below all channels) ------
   const axisTop =
-    nChannels * CHANNEL_HEIGHT + (nChannels - 1) * CHANNEL_GAP;
+    TOP_PAD + nChannels * CHANNEL_HEIGHT + (nChannels - 1) * CHANNEL_GAP;
   const tickInterval = chooseTick(duration);
 
   ctx.fillStyle = muted;
@@ -201,21 +225,33 @@ function drawWaveform(
   // ------ Playhead ------
   if (duration > 0) {
     const playX = H_PAD + (currentTime / duration) * drawW;
-    const totalH = nChannels * CHANNEL_HEIGHT + (nChannels - 1) * CHANNEL_GAP;
+    const totalH =
+      TOP_PAD + nChannels * CHANNEL_HEIGHT + (nChannels - 1) * CHANNEL_GAP;
 
+    // Subtle glow effect behind playhead
+    ctx.strokeStyle = fg;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.1;
+    ctx.beginPath();
+    ctx.moveTo(playX, TOP_PAD);
+    ctx.lineTo(playX, totalH);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Sharp playhead line
     ctx.strokeStyle = fg;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(playX, 0);
+    ctx.moveTo(playX, TOP_PAD);
     ctx.lineTo(playX, totalH);
     ctx.stroke();
 
-    // Small triangle handle at the top.
+    // Precise triangle handle at the top within canvas bounds.
     ctx.fillStyle = fg;
     ctx.beginPath();
-    ctx.moveTo(playX, 0);
-    ctx.lineTo(playX - 5, -8);
-    ctx.lineTo(playX + 5, -8);
+    ctx.moveTo(playX, TOP_PAD);
+    ctx.lineTo(playX - 4, 2);
+    ctx.lineTo(playX + 4, 2);
     ctx.closePath();
     ctx.fill();
   }
@@ -231,6 +267,11 @@ export function WaveformViewer({
   onSeek,
 }: WaveformViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [hoverInfo, setHoverInfo] = useState<{
+    x: number;
+    time: number;
+  } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Redraw whenever the waveform data or playback position changes.
   const redraw = useCallback(() => {
@@ -256,30 +297,80 @@ export function WaveformViewer({
     return () => observer.disconnect();
   }, [redraw]);
 
-  // Convert a click position to a seek time and call onSeek.
-  function handleClick(event: React.MouseEvent<HTMLCanvasElement>) {
+  // Convert a click/drag position to a seek time and call onSeek.
+  function handleSeek(clientX: number) {
     if (!onSeek || waveform.duration_seconds <= 0) return;
-    const rect = (event.target as HTMLCanvasElement).getBoundingClientRect();
-    const x = event.clientX - rect.left;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
     const ratio = Math.max(0, Math.min(1, x / rect.width));
     onSeek(ratio * waveform.duration_seconds);
   }
 
+  function handleMouseDown(event: React.MouseEvent<HTMLCanvasElement>) {
+    setIsDragging(true);
+    handleSeek(event.clientX);
+  }
+
+  function handleMouseMove(event: React.MouseEvent<HTMLCanvasElement>) {
+    const canvas = event.target as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const time = (x / rect.width) * waveform.duration_seconds;
+    setHoverInfo({ x, time });
+
+    // If dragging, continuously seek
+    if (isDragging) {
+      handleSeek(event.clientX);
+    }
+  }
+
+  function handleMouseUp() {
+    setIsDragging(false);
+  }
+
+  function handleMouseLeave() {
+    setHoverInfo(null);
+    setIsDragging(false);
+  }
+
+  // Handle global mouse up to stop dragging even if mouse leaves canvas
+  useEffect(() => {
+    const handleGlobalMouseUp = () => setIsDragging(false);
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+  }, []);
+
   const nChannels = waveform.n_channels;
   const cssH =
+    TOP_PAD +
     nChannels * CHANNEL_HEIGHT +
     (nChannels - 1) * CHANNEL_GAP +
     AXIS_HEIGHT;
 
   return (
-    <div className="w-full select-none overflow-hidden">
+    <div className="relative w-full select-none overflow-hidden">
       <canvas
         ref={canvasRef}
-        style={{ height: cssH, cursor: onSeek ? "pointer" : "default" }}
+        style={{ height: cssH, cursor: onSeek ? (isDragging ? "grabbing" : "pointer") : "default" }}
         className="w-full"
-        onClick={handleClick}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
         aria-label="Audio waveform"
       />
+      {/* Hover scrubber line */}
+      {hoverInfo !== null && (
+        <div
+          className="pointer-events-none absolute top-0 h-full w-px bg-foreground/30 transition-opacity"
+          style={{
+            left: `${hoverInfo.x}px`,
+            height: `${cssH}px`,
+          }}
+        />
+      )}
     </div>
   );
 }
