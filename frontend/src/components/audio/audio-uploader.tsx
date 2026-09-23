@@ -85,12 +85,31 @@ export function AudioUploader() {
             <Upload className="h-6 w-6 text-indigo-300" />
           </div>
 
-          <span className="relative z-10 mt-5 text-lg font-semibold text-white tracking-wide">
-            Drop your high-fidelity WAV file here
-          </span>
-          <span className="relative z-10 mt-2 font-mono text-xs text-slate-400">
-            or click to browse your local device
-          </span>
+          {selectedFile ? (
+            <>
+              <span className="relative z-10 mt-5 text-sm font-bold tracking-widest text-indigo-400 uppercase">
+                Ready to Load
+              </span>
+              <span className="relative z-10 mt-1 text-2xl font-semibold text-white">
+                {selectedFile.name}
+              </span>
+              <span className="relative z-10 mt-1 text-sm text-slate-400">
+                {formatBytes(selectedFile.size)}
+              </span>
+              <span className="relative z-10 mt-4 font-mono text-xs text-slate-500">
+                Drop another WAV here to replace it or click to browse
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="relative z-10 mt-5 text-lg font-semibold text-white tracking-wide">
+                Drop your high-fidelity WAV file here
+              </span>
+              <span className="relative z-10 mt-2 font-mono text-xs text-slate-400">
+                or click to browse your local device
+              </span>
+            </>
+          )}
         </button>
 
         <input
@@ -101,30 +120,7 @@ export function AudioUploader() {
           onChange={(event) => chooseFile(event.target.files?.[0])}
         />
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-t border-white/5 pt-6">
-          <div>
-            {selectedFile ? (
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5">
-                  <FileAudio className="h-5 w-5 text-indigo-400 shrink-0" />
-                </div>
-                <div>
-                  <span className="font-medium text-white">{selectedFile.name}</span>
-                  <p className="font-mono text-xs text-slate-400">
-                    {formatBytes(selectedFile.size)}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-slate-400">
-                <span className="h-2 w-2 rounded-full bg-slate-500" />
-                <span className="font-mono text-xs uppercase tracking-wider">
-                  No file selected
-                </span>
-              </div>
-            )}
-          </div>
-
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end border-t border-white/5 pt-6">
           <button
             type="button"
             disabled={state.status === "loading" || !selectedFile}

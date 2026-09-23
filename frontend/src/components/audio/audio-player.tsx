@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 
 interface AudioPlayerProps {
@@ -8,7 +8,13 @@ interface AudioPlayerProps {
   duration: number;
   onTimeUpdate?: (currentTime: number) => void;
   onEnded?: () => void;
+  onPlay?: () => void;
   seekTarget?: number;
+}
+
+export interface AudioPlayerRef {
+  pause: () => void;
+  reset: () => void;
 }
 
 function formatTime(seconds: number): string {
@@ -18,13 +24,14 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function AudioPlayer({
+export const AudioPlayer = forwardRef<AudioPlayerRef, AudioPlayerProps>(({
   src,
   duration,
   onTimeUpdate,
   onEnded,
+  onPlay,
   seekTarget,
-}: AudioPlayerProps) {
+}, ref) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -49,6 +56,24 @@ export function AudioPlayer({
     setIsReady(true);
   }, []);
 
+  useImperativeHandle(ref, () => ({
+    pause: () => {
+      if (audioRef.current && !audioRef.current.paused) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      }
+    },
+    reset: () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        setIsPlaying(false);
+        setCurrentTime(0);
+        onTimeUpdate?.(0);
+      }
+    }
+  }));
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || seekTarget === undefined) return;
@@ -71,6 +96,7 @@ export function AudioPlayer({
       try {
         await audio.play();
         setIsPlaying(true);
+        onPlay?.();
       } catch {
         setIsPlaying(false);
       }
@@ -169,4 +195,6 @@ export function AudioPlayer({
       </div>
     </div>
   );
-}
+});
+
+AudioPlayer.displayName = "AudioPlayer";

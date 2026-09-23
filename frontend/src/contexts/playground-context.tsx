@@ -22,6 +22,8 @@ export type SharedAudioState =
       waveform: WaveformData;
       spectrum: SpectrumData | null;
       spectrogram: SpectrogramData | null;
+      filteredWaveform: WaveformData | null;
+      filteredSpectrum: SpectrumData | null;
       objectUrl: string;
       spectrogramWindow: string;
     }
@@ -33,6 +35,8 @@ interface PlaygroundContextValue {
   updateSpectrogramWindow: (windowName: string) => Promise<void>;
   clearAudio: () => void;
   setProcessedAudio: (blob: Blob | null) => void;
+  setFilteredWaveform: (waveform: WaveformData | null) => void;
+  setFilteredSpectrum: (spectrum: SpectrumData | null) => void;
 }
 
 const PlaygroundContext = createContext<PlaygroundContextValue | null>(null);
@@ -82,6 +86,8 @@ export function PlaygroundProvider({ children }: { children: React.ReactNode }) 
         waveform: response.waveform,
         spectrum,
         spectrogram,
+        filteredWaveform: null,
+        filteredSpectrum: null,
         objectUrl,
         spectrogramWindow: "hann",
       });
@@ -123,8 +129,23 @@ export function PlaygroundProvider({ children }: { children: React.ReactNode }) 
     );
   };
 
+  const setFilteredWaveform = (waveform: WaveformData | null) => {
+    setState((prev) =>
+      prev.status === "success" ? { ...prev, filteredWaveform: waveform } : prev
+    );
+  };
+
+  const setFilteredSpectrum = (spectrum: SpectrumData | null) => {
+    setState((prev) =>
+      prev.status === "success" ? { ...prev, filteredSpectrum: spectrum } : prev
+    );
+  };
+
   return (
-    <PlaygroundContext.Provider value={{ state, uploadFile, updateSpectrogramWindow, clearAudio, setProcessedAudio }}>
+    <PlaygroundContext.Provider value={{ 
+      state, uploadFile, updateSpectrogramWindow, clearAudio, 
+      setProcessedAudio, setFilteredWaveform, setFilteredSpectrum 
+    }}>
       {children}
     </PlaygroundContext.Provider>
   );

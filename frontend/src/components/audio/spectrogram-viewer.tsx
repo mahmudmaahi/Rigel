@@ -84,7 +84,7 @@ function drawSpectrogramPanel(
   const cellH = plotHeight / nFreq;
 
   // --- Background ---
-  ctx.fillStyle = "#0d0d18";
+  ctx.fillStyle = "#0B0B1A";
   ctx.fillRect(plotLeft, rowTop, plotWidth, plotHeight);
 
   // --- Draw spectrogram cells ---
@@ -104,7 +104,7 @@ function drawSpectrogramPanel(
   }
 
   // --- Subtle grid overlay ---
-  ctx.strokeStyle = "rgba(255,255,255,0.06)";
+  ctx.strokeStyle = "rgba(255,255,255,0.1)";
   ctx.lineWidth = 0.5;
 
   // Time grid lines
@@ -128,8 +128,8 @@ function drawSpectrogramPanel(
   }
 
   // --- Frequency axis labels (left) ---
-  ctx.fillStyle = "rgba(255,255,255,0.45)";
-  ctx.font = "9px monospace";
+  ctx.fillStyle = "rgba(255,255,255,0.65)";
+  ctx.font = "11px monospace";
   ctx.textAlign = "right";
 
   for (let f = 0; f <= nyquistHz; f += freqInterval) {
@@ -143,14 +143,14 @@ function drawSpectrogramPanel(
   ctx.translate(plotLeft - 44, rowTop + plotHeight / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.textAlign = "center";
-  ctx.font = "9px monospace";
-  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.font = "11px monospace";
+  ctx.fillStyle = "rgba(255,255,255,0.65)";
   ctx.fillText("Hz", 0, 0);
   ctx.restore();
 
   // --- Channel label ---
-  ctx.fillStyle = "rgba(255,255,255,0.6)";
-  ctx.font = "bold 10px monospace";
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.font = "bold 11px monospace";
   ctx.textAlign = "left";
   ctx.fillText(channelLabel, plotLeft + 8, rowTop + 16);
 }
@@ -165,8 +165,8 @@ function drawTimeAxis(
   const interval = niceTimeInterval(durationS);
   const axisY = canvasHeight - PADDING.bottom + 14;
 
-  ctx.fillStyle = "rgba(255,255,255,0.40)";
-  ctx.font = "9px monospace";
+  ctx.fillStyle = "rgba(255,255,255,0.65)";
+  ctx.font = "11px monospace";
   ctx.textAlign = "center";
 
   for (let t = 0; t <= durationS; t += interval) {
@@ -178,8 +178,8 @@ function drawTimeAxis(
   }
 
   ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(255,255,255,0.35)";
-  ctx.font = "9px monospace";
+  ctx.fillStyle = "rgba(255,255,255,0.65)";
+  ctx.font = "11px monospace";
   ctx.fillText("Time (s)", plotLeft + plotWidth / 2, canvasHeight - 4);
 }
 

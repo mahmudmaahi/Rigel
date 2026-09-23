@@ -40,11 +40,12 @@ const MAX_TICKS = 8;
 // ---------------------------------------------------------------------------
 
 const COLOURS = {
-  background:    "#0d0d18",
-  grid:          "rgba(255,255,255,0.07)",
-  axisLabel:     "rgba(255,255,255,0.40)",
-  channelLabel:  "rgba(255,255,255,0.55)",
+  background:    "#0F0F1E",
+  grid:          "rgba(255,255,255,0.08)",
+  axisLabel:     "rgba(255,255,255,0.65)",
+  channelLabel:  "rgba(255,255,255,0.75)",
   playhead:      "rgba(129,140,248,0.85)", // indigo-400
+  waveform:      "#6366f1", // indigo-500
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -150,7 +151,7 @@ function drawWaveform(
 
     // Channel label for stereo + technical reference marks.
     ctx.fillStyle = muted;
-    ctx.font = `9px monospace`;
+    ctx.font = `11px monospace`;
     ctx.textAlign = "left";
     if (nChannels > 1) {
       ctx.fillText(chIdx === 0 ? "CH_L" : "CH_R", H_PAD + 6, rowTop + 14);
@@ -168,12 +169,8 @@ function drawWaveform(
     const bins = ch.bins;
     const nBins = bins.length;
 
-    // Create a symmetric vertical gradient for the waveform:
-    // rowTop (peak positive) -> teal/white
-    // midY (zero crossing) -> navy/purple
-    // rowBot (peak negative) -> teal/white
-    const gradient = createSymmetricColorMapGradient(ctx, 0, rowTop, 0, rowTop + CHANNEL_HEIGHT);
-    ctx.fillStyle = gradient;
+    // Use a solid color for the waveform to improve clarity
+    ctx.fillStyle = COLOURS.waveform;
 
     for (let i = 0; i < nBins; i++) {
       const bin = bins[i];
@@ -197,7 +194,7 @@ function drawWaveform(
   const tickInterval = chooseTick(duration);
 
   ctx.fillStyle = muted;
-  ctx.font = `10px system-ui, sans-serif`;
+  ctx.font = `11px system-ui, sans-serif`;
   ctx.textAlign = "center";
 
   // Axis baseline.

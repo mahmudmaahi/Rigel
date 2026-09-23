@@ -1,6 +1,6 @@
 # Rigel
 
-Team Orion's Rigel project is an incremental intelligent audio platform. The current implementation is **Module 06 — Audio Filtering**: Classical IIR / FIR frequency-selective filtering and parametric EQ. Features zero-phase offline processing via `sosfiltfilt` / `filtfilt` with 5 classical IIR families, FIR window methods, and Parks-McClellan designs, powered by a new `dsp_core/filtering.py` module.
+Team Orion's Rigel project is an incremental intelligent audio platform. The current implementation is **Module 07 — Noise Removal**: Classical statistical offline denoising. Features four progressive approaches: Improved Spectral Subtraction, Decision-Directed Wiener Filtering, Log-MMSE, and IMCRA + OM-LSA. Built upon a unified STFT analysis/synthesis framework in the new `dsp_core/denoise.py` module.
 
 Rigel does **not** yet implement denoising, VAD, voice effects, ANC, desktop functionality, or AI. Those belong to later modules.
 
@@ -156,6 +156,22 @@ The frontend uses the browser's local `File` object URL (`URL.createObjectURL`) 
 - `frontend/src/components/audio/audio-uploader.tsx` — all three requests (`analyze`, `spectrum`, `spectrogram`) now run in parallel via `Promise.allSettled`. `SpectrogramViewer` renders below the `SpectrumViewer` in the Analysis Panel.
 - 63 new backend tests in `tests/test_stft.py` covering: Hann window properties, normalization, STFT shape/dtype, silence, 1 kHz sine peak-bin detection, short-signal padding, dBFS conversion, time/frequency downsampling (peak-preserving), axis builders, and full integration (mono/stereo, metadata, display caps, error handling, multiple sample rates).
 - **Total backend tests: 145 passing (82 pre-existing + 63 new)**.
+
+### Module 07 — Noise Removal (COMPLETE)
+
+- `backend/dsp_core/denoise.py` — comprehensive frequency-domain statistical denoising:
+  - **Shared Infrastructure**: Unified STFT/ISTFT architecture with robust energy-based offline noise initialization to eliminate cold-start speech suppression.
+  - **Improved Spectral Subtraction**: Power subtraction with oversubtraction factors and spectral flooring.
+  - **Decision-Directed Wiener Filtering**: Ephraim-Malah style a-priori SNR tracking for reduced musical noise.
+  - **Log-MMSE**: Minimum Mean-Square Error Log-Spectral Amplitude estimator for optimal speech envelope preservation.
+  - **IMCRA + OM-LSA**: Advanced dual-iteration noise tracking with speech-presence probability (SPP) controlled geometric gain modification.
+- **Conceptual Progression**: The module advances structurally from raw frequency-domain attenuation -> statistical estimation -> decision-directed enhancement -> advanced speech-presence-controlled enhancement.
+- **Rigel's Current Approach**: Rigel explicitly uses classical statistical DSP (separating noise tracking from gain estimation) rather than deep learning. It does not claim to be a perfect universal denoiser; it is an educational laboratory for observing the fundamental mathematical behaviors and limits of traditional algorithms.
+- **Next Module**: Module 08 — Voice Activity Detection (VAD).
+- `frontend/src/app/playground/enhancement/page.tsx` — Full integration of the noise removal algorithms into the UI.
+  - Dynamic parameter controls tailored to each method.
+  - Real-time synchronized playback and visual comparison between the original signal and the processed output.
+- Extensive backend testing (486 total tests) covering edge cases, initialization behaviors, mathematical validity, and structural limits of the estimators.
 
 ### Module 06 — Audio Filtering
 
@@ -506,11 +522,11 @@ Long audio can produce hundreds of thousands of raw FFT bins. The display spectr
 [x] Module 04 — Fourier Analysis
 [x] Module 05 — Spectrogram / STFT
 [x] Module 06 — Digital Filters
-[ ] Module 07 — Noise Removal           ← current
+[x] Module 07 — Noise Removal
 [ ] Module 08 — Voice Activity Detection
 [ ] Module 09 — Voice Tweaks
 ```
 
 ## Next Module
 
-**Module 07 — Noise Removal** — implement basic noise estimation, spectral subtraction, and Wiener filtering. Do not begin Module 07 until explicitly instructed.
+**Module 08 — Voice Activity Detection** — implement classical time-domain and frequency-domain VAD features. Do not begin Module 08 until explicitly instructed.

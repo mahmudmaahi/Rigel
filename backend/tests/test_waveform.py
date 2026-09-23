@@ -139,21 +139,21 @@ class TestPeakPreservation:
         samples[4000] = 30000  # spike exactly in the middle
         result = compute_waveform(samples, sample_rate_hz=8000, n_bins=100)
         all_maxes = [b.max_amplitude for b in result.channels[0].bins]
-        assert max(all_maxes) == pytest.approx(30000.0)
+        assert max(all_maxes) == pytest.approx(30000.0 / 32768.0)
 
     def test_negative_peak_preserved(self) -> None:
         samples = np.zeros(8000, dtype=np.int16)
         samples[100] = -25000
         result = compute_waveform(samples, sample_rate_hz=8000, n_bins=100)
         all_mins = [b.min_amplitude for b in result.channels[0].bins]
-        assert min(all_mins) == pytest.approx(-25000.0)
+        assert min(all_mins) == pytest.approx(-25000.0 / 32768.0)
 
     def test_constant_signal_min_equals_max(self) -> None:
         samples = np.full(8000, 1000, dtype=np.int16)
         result = compute_waveform(samples, sample_rate_hz=8000)
         for bin_ in result.channels[0].bins:
-            assert bin_.min_amplitude == pytest.approx(1000.0)
-            assert bin_.max_amplitude == pytest.approx(1000.0)
+            assert bin_.min_amplitude == pytest.approx(1000.0 / 32768.0)
+            assert bin_.max_amplitude == pytest.approx(1000.0 / 32768.0)
 
 
 class TestTimeMapping:
@@ -198,8 +198,8 @@ class TestEdgeCases:
         result = compute_waveform(samples, sample_rate_hz=8000, n_bins=1)
         assert result.n_bins == 1
         bins = result.channels[0].bins
-        assert bins[0].min_amplitude == pytest.approx(42.0)
-        assert bins[0].max_amplitude == pytest.approx(42.0)
+        assert bins[0].min_amplitude == pytest.approx(42.0 / 32768.0)
+        assert bins[0].max_amplitude == pytest.approx(42.0 / 32768.0)
 
     def test_float32_audio(self) -> None:
         """float32 samples (normalised −1…+1) should work without errors."""

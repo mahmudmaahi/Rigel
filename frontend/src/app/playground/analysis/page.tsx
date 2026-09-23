@@ -120,7 +120,7 @@ export default function AnalysisPage() {
       </div>
 
       {/* Waveform Visualization Canvas */}
-      <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-6 shadow-inner">
+      <div className="mb-6 rounded-2xl border border-white/[0.08] bg-[#161625] p-6 shadow-sm">
         <WaveformViewer
           waveform={waveform}
           currentTime={currentTime}
@@ -143,7 +143,7 @@ export default function AnalysisPage() {
       <div className="flex flex-col gap-6">
         {/* Frequency Spectrum */}
         {spectrum && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-6 shadow-inner">
+          <div className="rounded-2xl border border-white/[0.08] bg-[#161625] p-6 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h4 className="font-mono text-xs uppercase tracking-widest text-slate-400">
@@ -165,7 +165,7 @@ export default function AnalysisPage() {
 
         {/* Spectrogram / STFT */}
         {spectrogram && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-6 shadow-inner relative">
+          <div className="rounded-2xl border border-white/[0.08] bg-[#161625] p-6 shadow-sm relative">
             <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h4 className="font-mono text-xs uppercase tracking-widest text-slate-400">
@@ -263,7 +263,7 @@ export default function AnalysisPage() {
           ].map(([label, value]) => (
             <div
               key={label}
-              className="glass rounded-xl p-4 border border-white/5 hover:border-white/10 transition-colors"
+              className="bg-[#161625] rounded-xl p-4 border border-white/[0.08] hover:border-white/[0.15] transition-colors"
             >
               <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
                 {label}

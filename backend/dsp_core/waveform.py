@@ -51,6 +51,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from dsp_core.spectrum import normalize_samples
+
 # Default number of visual bins produced by the decimator.
 DEFAULT_N_BINS: int = 1_500
 
@@ -163,10 +165,9 @@ def compute_waveform(
     if n_bins < 1:
         raise ValueError(f"n_bins must be at least 1, got {n_bins!r}.")
 
-    # Normalise to float64 for uniform arithmetic regardless of source dtype.
-    # Integer samples (int16, int32) are kept at their raw integer scale;
-    # float samples are already in their natural range (often −1.0 … +1.0).
-    signal = np.asarray(samples, dtype=np.float64)
+    # Normalize all samples to [-1.0, 1.0] scale so that int16 uploads
+    # and float32 processed outputs share the same amplitude reference.
+    signal = normalize_samples(samples).astype(np.float64)
 
     # Ensure shape is always (num_samples, num_channels).
     if signal.ndim == 1:

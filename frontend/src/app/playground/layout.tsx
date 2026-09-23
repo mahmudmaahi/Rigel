@@ -20,7 +20,7 @@ function formatBytes(bytes: number, decimals = 2) {
 const PLAYGROUND_NAV = [
   { name: "Audio Analysis", path: "/playground/analysis", icon: Waves, enabled: true },
   { name: "Filtering", path: "/playground/filtering", icon: SlidersHorizontal, enabled: true },
-  { name: "Noise Removal", path: "/playground/enhancement", icon: Music, enabled: false },
+  { name: "Noise Removal", path: "/playground/enhancement", icon: Music, enabled: true },
   { name: "Speech / VAD", path: "/playground/speech", icon: Activity, enabled: false },
 ];
 
@@ -115,12 +115,12 @@ function PlaygroundSidebar() {
             ) : (
               <div
                 key={item.path}
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 cursor-not-allowed"
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 cursor-not-allowed"
                 title="Future Feature"
               >
-                <Icon className="h-4 w-4 opacity-50" />
+                <Icon className="h-4 w-4 opacity-70" />
                 {item.name}
-                <span className="ml-auto text-[9px] uppercase tracking-wider bg-slate-800/50 px-1.5 py-0.5 rounded text-slate-500">Soon</span>
+                <span className="ml-auto text-[9px] uppercase tracking-wider bg-slate-700/50 px-1.5 py-0.5 rounded text-slate-400">Soon</span>
               </div>
             );
           })}
@@ -149,9 +149,9 @@ function PlaygroundSidebar() {
         ) : (
           <button 
             disabled
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-white/[0.02] border border-white/5 px-3 py-2.5 text-sm font-medium text-slate-600 cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5 text-sm font-medium text-slate-500 cursor-not-allowed"
           >
-            <Download className="h-4 w-4 opacity-50" />
+            <Download className="h-4 w-4 opacity-70" />
             No processed audio
           </button>
         )}

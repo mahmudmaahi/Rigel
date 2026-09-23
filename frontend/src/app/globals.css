@@ -26,9 +26,16 @@
   font-style: normal;
 }
 
+@font-face {
+  font-family: 'Trirong';
+  src: url('/fonts/Trirong-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+}
+
 @layer base {
   body {
-    @apply bg-[#080811] text-white;
+    @apply bg-[#0A0A14] text-white;
   }
 }
 
@@ -44,7 +51,7 @@ html {
 body {
   min-height: 100vh;
   margin: 0;
-  background: #080811;
+  background: #0A0A14;
   color: white;
   font-feature-settings: "rlig" 1, "calt" 1;
   text-rendering: optimizeLegibility;

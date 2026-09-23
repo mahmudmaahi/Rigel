@@ -651,17 +651,22 @@ def _design_fir_window(spec: FilterSpec) -> FilterDesignResult:
 
     fs = spec.sample_rate_hz
 
+    window_param = spec.fir_window
+    if window_param == "kaiser":
+        from scipy.signal import kaiser_beta
+        window_param = ("kaiser", kaiser_beta(spec.attenuation_db))
+
     if btype == "lowpass":
-        b = firwin(numtaps, spec.cutoff_hz, window=spec.fir_window,
+        b = firwin(numtaps, spec.cutoff_hz, window=window_param,
                    pass_zero=True, fs=fs)
     elif btype == "highpass":
-        b = firwin(numtaps, spec.cutoff_hz, window=spec.fir_window,
+        b = firwin(numtaps, spec.cutoff_hz, window=window_param,
                    pass_zero=False, fs=fs)
     elif btype == "bandpass":
-        b = firwin(numtaps, [spec.low_hz, spec.high_hz], window=spec.fir_window,
+        b = firwin(numtaps, [spec.low_hz, spec.high_hz], window=window_param,
                    pass_zero=False, fs=fs)
     elif btype == "bandstop":
-        b = firwin(numtaps, [spec.low_hz, spec.high_hz], window=spec.fir_window,
+        b = firwin(numtaps, [spec.low_hz, spec.high_hz], window=window_param,
                    pass_zero=True, fs=fs)
     else:
         raise FilterDesignError(

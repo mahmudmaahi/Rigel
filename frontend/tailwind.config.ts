@@ -26,6 +26,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-geist-sans)", "Inter", "sans-serif"],
+        trirong: ["Trirong", "serif"],
       },
       keyframes: {
         "shine-pulse": {

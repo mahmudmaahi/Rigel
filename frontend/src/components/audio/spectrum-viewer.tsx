@@ -22,8 +22,8 @@ import { DB_MIN, DB_MAX, createColorMapGradient } from "@/lib/colors";
 // Layout constants
 // ---------------------------------------------------------------------------
 
-const CHANNEL_HEIGHT = 160; // px per channel row
-const PADDING = { top: 24, right: 20, bottom: 36, left: 56 }; // px
+const CHANNEL_HEIGHT = 220; // px per channel row — matches SpectrumComparison
+const PADDING = { top: 36, right: 24, bottom: 48, left: 60 }; // px — matches SpectrumComparison
 
 // Grid line positions (dBFS)
 const DB_GRID_LINES = [-20, -40, -60, -80];
@@ -32,11 +32,11 @@ const DB_GRID_LINES = [-20, -40, -60, -80];
 const FREQ_TICK_TARGET = 8;
 
 const COLOURS = {
-  background:    "#0d0d18",
-  grid:          "rgba(255,255,255,0.07)",
-  axisLabel:     "rgba(255,255,255,0.40)",
-  channelLabel:  "rgba(255,255,255,0.55)",
-  zeroDB:        "rgba(255,255,255,0.12)",  // 0 dBFS reference line
+  background:    "#0F0F1E",
+  grid:          "rgba(255,255,255,0.1)",
+  axisLabel:     "rgba(255,255,255,0.65)",
+  channelLabel:  "rgba(255,255,255,0.75)",
+  zeroDB:        "rgba(255,255,255,0.15)",  // 0 dBFS reference line
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ function drawChannelRow(
   ctx.stroke();
 
   ctx.fillStyle = COLOURS.axisLabel;
-  ctx.font = `9px monospace`;
+  ctx.font = `11px monospace`;
   ctx.textAlign = "right";
   ctx.fillText("0", plotLeft - 6, yZero + 3);
 
@@ -186,7 +186,7 @@ function drawChannelRow(
 
   // --- Channel label ---
   ctx.fillStyle = COLOURS.channelLabel;
-  ctx.font = `bold 10px monospace`;
+  ctx.font = `bold 11px monospace`;
   ctx.textAlign = "left";
   ctx.fillText(channelLabel, plotLeft + 8, rowTop + 16);
 }
@@ -203,7 +203,7 @@ function drawFrequencyAxis(
   const axisY = canvasHeight - PADDING.bottom + 14;
 
   ctx.fillStyle = COLOURS.axisLabel;
-  ctx.font = `9px monospace`;
+  ctx.font = `11px monospace`;
   ctx.textAlign = "center";
 
   for (let f = 0; f <= nyquistHz; f += tickInterval) {
@@ -214,7 +214,7 @@ function drawFrequencyAxis(
 
   // Axis title
   ctx.fillStyle = COLOURS.axisLabel;
-  ctx.font = `9px monospace`;
+  ctx.font = `11px monospace`;
   ctx.textAlign = "center";
   ctx.fillText("Frequency (Hz)", plotLeft + plotWidth / 2, canvasHeight - 4);
 }

@@ -87,12 +87,12 @@ export default function Home() {
                   className="text-4xl md:text-5xl lg:text-[4.25rem] font-medium leading-[1.1] tracking-tight flex flex-col items-center justify-center gap-y-4"
                 >
                   <div className={`flex gap-x-3 items-center ${animate ? "opacity-0 animate-slide-in-left" : ""}`} style={animate ? { animationDelay: "1.5s" } : {}}>
-                    <span className="text-slate-400 font-normal" style={{ fontFamily: "'OrangeAvenueOutline', sans-serif" }}>From</span>
-                    <span className="text-white tracking-normal font-normal" style={{ fontFamily: "'OrangeAvenue', sans-serif" }}>Raw Signals</span>
+                    <span className="text-slate-400 font-trirong font-semibold">From</span>
+                    <span className="text-white tracking-normal font-trirong font-semibold">Raw Signals</span>
                   </div>
                   <div className={`flex gap-x-3 items-center ${animate ? "opacity-0 animate-slide-in-right" : ""}`} style={animate ? { animationDelay: "1.8s" } : {}}>
-                    <span className="text-slate-400 font-normal" style={{ fontFamily: "'OrangeAvenueOutline', sans-serif" }}>to</span>
-                    <span className="text-white tracking-normal font-normal" style={{ fontFamily: "'OrangeAvenue', sans-serif" }}>Pure Clarity</span>
+                    <span className="text-slate-400 font-trirong font-semibold">to</span>
+                    <span className="text-white tracking-normal font-trirong font-semibold">Pure Clarity</span>
                   </div>
                 </h1>
                 <p 
@@ -141,8 +141,8 @@ export default function Home() {
           {/* Feature Showcase / Product Preview Section */}
           <section id="features" className="relative overflow-hidden py-20 pb-32">
             {/* Fades on the sides */}
-            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-32 bg-gradient-to-r from-[#080811] to-transparent"></div>
-            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-32 bg-gradient-to-l from-[#080811] to-transparent"></div>
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-32 bg-gradient-to-r from-[#0A0A14] to-transparent"></div>
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-32 bg-gradient-to-l from-[#0A0A14] to-transparent"></div>
 
             <div className="flex flex-col gap-6 mt-8">
               {/* Row 1 - moves left */}
@@ -162,7 +162,7 @@ export default function Home() {
             
             <div className="mx-auto max-w-2xl text-center mt-32 relative z-20">
               <h2 className="text-sm font-bold tracking-widest text-slate-400 uppercase mb-6" style={{ fontFamily: "'Century Gothic', sans-serif" }}>
-                EXPLORE WHAT'S HIDDEN
+                EXPLORE WHAT&apos;S HIDDEN
               </h2>
               <p className="text-xl md:text-2xl text-white/90 leading-relaxed font-medium" style={{ fontFamily: "'Century Gothic', sans-serif" }}>
                 Go beyond the waveform. Explore the structures, patterns, and possibilities hidden inside your audio.

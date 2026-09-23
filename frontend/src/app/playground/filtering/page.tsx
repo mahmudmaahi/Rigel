@@ -5,12 +5,20 @@ import { usePlayground } from "@/contexts/playground-context";
 import {
   applyFilter,
   fetchFilterResponse,
+  fetchSpectrum,
+  analyzeAudio,
   type FilterType,
   type FilterFamily,
   type FilterParams,
   type FilterResponseData,
+  type SpectrumData,
 } from "@/lib/api";
-import { SlidersHorizontal, Loader2, CheckCircle, AlertCircle, Play, Square, Info, ChevronUp, ChevronDown } from "lucide-react";
+import { SpectrumViewer } from "@/components/audio/spectrum-viewer";
+import { WaveformViewer } from "@/components/audio/waveform-viewer";
+import { WaveformComparison } from "@/components/audio/waveform-comparison";
+import { SpectrumComparison } from "@/components/audio/spectrum-comparison";
+import { AudioPlayer, type AudioPlayerRef } from "@/components/audio/audio-player";
+import { SlidersHorizontal, Loader2, CheckCircle, AlertCircle, Info, ChevronUp, ChevronDown } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Data
@@ -200,7 +208,7 @@ function FilterTypeGrid({
             key={ft.value}
             onClick={() => onChange(ft.value)}
             className={[
-              "flex w-[30%] min-w-[100px] flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-6 transition-all duration-150 text-center",
+              "flex flex-1 min-w-[100px] max-w-[150px] flex-col items-center justify-center gap-1.5 rounded-2xl border px-3 py-4 transition-all duration-150 text-center",
               active
                 ? "border-indigo-500/50 bg-indigo-500/15 shadow-[0_0_12px_rgba(99,102,241,0.2)]"
                 : "border-white/[0.06] bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.04]",
@@ -226,8 +234,8 @@ function FrequencyResponseChart({
 }: {
   data: FilterResponseData; sampleRateHz: number;
 }) {
-  const W = 540, H = 160;
-  const PAD = { top: 10, right: 12, bottom: 30, left: 42 };
+  const W = 540, H = 320;
+  const PAD = { top: 10, right: 12, bottom: 34, left: 46 };
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
   const nyquist = sampleRateHz / 2;
@@ -290,25 +298,25 @@ function FrequencyResponseChart({
 
       {/* Y labels */}
       {yTicks.map(db => (
-        <text key={db} x={PAD.left-5} y={toY(db)+3.5} textAnchor="end"
-          fontSize="8" fill="rgba(148,163,184,0.6)" fontFamily="monospace">
+        <text key={db} x={PAD.left-6} y={toY(db)+3.5} textAnchor="end"
+          fontSize="10" fill="rgba(148,163,184,0.6)" fontFamily="monospace">
           {db}
         </text>
       ))}
 
       {/* X labels */}
       {xTicks.map(f => (
-        <text key={f} x={toX(f)} y={PAD.top+plotH+12} textAnchor="middle"
-          fontSize="7.5" fill="rgba(148,163,184,0.5)" fontFamily="monospace">
+        <text key={f} x={toX(f)} y={PAD.top+plotH+14} textAnchor="middle"
+          fontSize="9.5" fill="rgba(148,163,184,0.5)" fontFamily="monospace">
           {f>=1000?`${f/1000}k`:String(f)}
         </text>
       ))}
 
-      <text x={PAD.left+plotW/2} y={H-2} textAnchor="middle" fontSize="8" fill="rgba(148,163,184,0.4)">
+      <text x={PAD.left+plotW/2} y={H-2} textAnchor="middle" fontSize="10" fill="rgba(148,163,184,0.4)">
         Frequency (Hz)
       </text>
-      <text x={8} y={PAD.top+plotH/2} textAnchor="middle" fontSize="8" fill="rgba(148,163,184,0.4)"
-        transform={`rotate(-90,8,${PAD.top+plotH/2})`}>
+      <text x={10} y={PAD.top+plotH/2} textAnchor="middle" fontSize="10" fill="rgba(148,163,184,0.4)"
+        transform={`rotate(-90,10,${PAD.top+plotH/2})`}>
         dB
       </text>
     </svg>
@@ -320,7 +328,7 @@ function FrequencyResponseChart({
 // ---------------------------------------------------------------------------
 
 export default function FilteringPage() {
-  const { state, setProcessedAudio } = usePlayground();
+  const { state, setProcessedAudio, setFilteredSpectrum, setFilteredWaveform } = usePlayground();
 
   // Filter type & family
   const [filterType, setFilterType] = useState<FilterType>("lowpass");
@@ -350,15 +358,23 @@ export default function FilteringPage() {
   const [isFetching, setIsFetching]   = useState(false);
   const [applyError, setApplyError]   = useState<string | null>(null);
   const [applySuccess, setApplySuccess] = useState(false);
-  const [showToast, setShowToast]       = useState(false);
   const [freqResp, setFreqResp]       = useState<FilterResponseData | null>(null);
   const [respError, setRespError]     = useState<string | null>(null);
-
+  
   // Playback
   const processedAudio = state.status === "success" ? state.processedAudio : null;
+  const filteredSpectrum = state.status === "success" ? state.filteredSpectrum : null;
+  const filteredWaveform = state.status === "success" ? state.filteredWaveform : null;
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  const originalAudioRef = useRef<AudioPlayerRef>(null);
+  const filteredAudioRef = useRef<AudioPlayerRef>(null);
+
+  const [originalTime, setOriginalTime] = useState(0);
+  const [filteredTime, setFilteredTime] = useState(0);
+  const [originalSeekTarget, setOriginalSeekTarget] = useState<number | undefined>();
+  const [filteredSeekTarget, setFilteredSeekTarget] = useState<number | undefined>();
+  const [activePlayer, setActivePlayer] = useState<"original" | "filtered" | null>(null);
 
   const sampleRateHz = state.status === "success" ? state.metadata.sample_rate_hz : 44100;
   const nyquist = sampleRateHz / 2;
@@ -371,7 +387,10 @@ export default function FilteringPage() {
 
   // When peaking is selected, force family to butterworth (peaking uses biquad)
   useEffect(() => {
-    if (isPeaking && isFIR) setFamily("butterworth");
+    if (isPeaking && isFIR) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFamily("butterworth");
+    }
   }, [isPeaking, isFIR]);
 
   const params = buildApiParams(
@@ -408,10 +427,12 @@ export default function FilteringPage() {
   useEffect(() => {
     if (processedAudio) {
       const url = URL.createObjectURL(processedAudio);
+      // eslint-disable-next-line
       setProcessedUrl(url);
       return () => URL.revokeObjectURL(url);
     } else {
-      setProcessedUrl(null);
+      // eslint-disable-next-line
+      setProcessedUrl(null); 
     }
   }, [processedAudio]);
 
@@ -425,8 +446,17 @@ export default function FilteringPage() {
       const blob = await applyFilter(state.file, params as FilterParams);
       setProcessedAudio(blob);
       setApplySuccess(true);
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 4000);
+      
+      // Fetch spectrum and waveform of the filtered audio
+      const processedFile = new File([blob], "filtered.wav", { type: "audio/wav" });
+      
+      const [specResp, waveResp] = await Promise.all([
+        fetchSpectrum(processedFile),
+        analyzeAudio(processedFile)
+      ]);
+      
+      setFilteredSpectrum(specResp.spectrum);
+      setFilteredWaveform(waveResp.waveform);
     } catch (e) {
       setApplyError(e instanceof Error ? e.message : "Filtering failed.");
     } finally {
@@ -434,23 +464,17 @@ export default function FilteringPage() {
     }
   };
 
-  // Playback
-  const togglePlay = () => {
-    if (!processedUrl) return;
-    if (!audioRef.current || audioRef.current.src !== processedUrl) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      audioRef.current = new Audio(processedUrl);
-      audioRef.current.onended = () => setIsPlaying(false);
+  const handlePlayOriginal = () => {
+    setActivePlayer("original");
+    if (filteredAudioRef.current) {
+      filteredAudioRef.current.reset();
     }
-    if (isPlaying) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setIsPlaying(false);
-    } else {
-      void audioRef.current.play();
-      setIsPlaying(true);
+  };
+
+  const handlePlayFiltered = () => {
+    setActivePlayer("filtered");
+    if (originalAudioRef.current) {
+      originalAudioRef.current.reset();
     }
   };
 
@@ -488,32 +512,27 @@ export default function FilteringPage() {
         {/* ── Left: controls ── */}
         <div className="flex flex-col gap-6">
 
-          {/* Filter Type */}
-          <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 lg:p-8">
-            <h2 className="mb-5 text-[11px] font-bold tracking-widest text-slate-500 uppercase ml-1">Filter Type</h2>
-            <FilterTypeGrid value={filterType} onChange={(v) => { setFilterType(v); setApplySuccess(false); }} />
-          </section>
+          {/* Group 1: Filter Type & Family */}
+          <div className="flex flex-col gap-6 rounded-3xl border border-white/[0.08] bg-[#161625] p-6 lg:p-8 shadow-sm">
+            <div>
+              <h2 className="mb-5 text-[11px] font-bold tracking-widest text-slate-500 uppercase ml-1">Filter Type</h2>
+              <FilterTypeGrid value={filterType} onChange={(v) => { setFilterType(v); setApplySuccess(false); }} />
+            </div>
+            
+            {!isPeaking && (
+              <div className="pt-6 border-t border-white/[0.06]">
+                <h2 className="mb-5 text-[11px] font-bold tracking-widest text-slate-500 uppercase ml-1">Design Family</h2>
+                <PillGroup
+                  value={family}
+                  onChange={(v) => { setFamily(v); setApplySuccess(false); }}
+                  options={FAMILIES.map(f => ({ value: f.value, label: f.label }))}
+                />
+              </div>
+            )}
+          </div>
 
-          {/* Filter Family — hide for peaking */}
-          {!isPeaking && (
-            <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 lg:p-8">
-              <h2 className="mb-5 text-[11px] font-bold tracking-widest text-slate-500 uppercase ml-1">Design Family</h2>
-              <PillGroup
-                value={family}
-                onChange={(v) => { setFamily(v); setApplySuccess(false); }}
-                options={FAMILIES.map(f => ({ value: f.value, label: f.label, note: f.note }))}
-              />
-              {activeFamilyInfo && (
-                <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-500">
-                  <Info className="h-3 w-3 shrink-0 text-indigo-400/60" />
-                  {activeFamilyInfo.note}
-                </p>
-              )}
-            </section>
-          )}
-
-          {/* Frequency controls */}
-          <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 lg:p-8">
+          {/* Group 2: Frequency controls */}
+          <section className="rounded-3xl border border-white/[0.08] bg-[#161625] p-6 lg:p-8 shadow-sm">
             {isPeaking ? (
               <div className="grid grid-cols-3 gap-3">
                 <NumInput id="center-hz" label="Centre Freq" value={centerHz}
@@ -547,103 +566,69 @@ export default function FilteringPage() {
             )}
           </section>
 
-          {/* Order / taps */}
-          <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 lg:p-8">
-            <NumInput
-              id="filter-order"
-              label={isFIR ? "FIR Taps − 1 (order)" : "Filter Order"}
-              value={order}
-              onChange={v => { setOrder(v); setApplySuccess(false); }}
-              min={1}
-              max={isFIR ? 512 : 20}
-              step={isFIR ? 4 : 1}
-              hint={
-                isFIR
-                  ? `${order + 1} taps. More taps → sharper roll-off, more computation.`
-                  : `Eff. zero-phase order = 2×${order} = ${order * 2}. IIR max = 20.`
-              }
-            />
-          </section>
+          {/* Group 3: Order & Extras */}
+          <section className="flex flex-col gap-6 rounded-3xl border border-white/[0.08] bg-[#161625] p-6 lg:p-8 shadow-sm">
+            <div>
+              <NumInput
+                id="filter-order"
+                label={isFIR ? "FIR Taps − 1 (order)" : "Filter Order"}
+                value={order}
+                onChange={v => { setOrder(v); setApplySuccess(false); }}
+                min={1}
+                max={isFIR ? 512 : 20}
+                step={isFIR ? 4 : 1}
+                hint={
+                  isFIR
+                    ? `${order + 1} taps. More taps → sharper roll-off.`
+                    : `Eff. zero-phase order = ${order * 2}. IIR max = 20.`
+                }
+              />
+            </div>
 
-          {/* Family-specific extras */}
-          {(needsRipple || needsAtten) && (
-            <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 lg:p-8">
-              <h2 className="mb-5 text-[11px] font-bold tracking-widest text-slate-500 uppercase ml-1">Design Parameters</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {needsRipple && (
-                  <NumInput id="ripple-db" label="Passband Ripple" value={rippleDb}
-                    onChange={v => { setRippleDb(v); setApplySuccess(false); }}
-                    min={0.01} max={10} step={0.1} unit="dB"
-                    hint="Chebyshev I / Elliptic" />
-                )}
-                {needsAtten && (
-                  <NumInput id="atten-db" label="Stopband Atten." value={attenuationDb}
-                    onChange={v => { setAttenuationDb(v); setApplySuccess(false); }}
-                    min={1} max={120} step={1} unit="dB"
-                    hint="Chebyshev II / Elliptic" />
+            {(needsRipple || needsAtten) && (
+              <div className="pt-6 border-t border-white/[0.06]">
+                <h2 className="mb-5 text-[11px] font-bold tracking-widest text-slate-500 uppercase ml-1">Design Parameters</h2>
+                <div className="grid grid-cols-2 gap-3">
+                  {needsRipple && (
+                    <NumInput id="ripple-db" label="Passband Ripple" value={rippleDb}
+                      onChange={v => { setRippleDb(v); setApplySuccess(false); }}
+                      min={0.01} max={10} step={0.1} unit="dB" />
+                  )}
+                  {needsAtten && (
+                    <NumInput id="atten-db" label="Stopband Atten." value={attenuationDb}
+                      onChange={v => { setAttenuationDb(v); setApplySuccess(false); }}
+                      min={1} max={120} step={1} unit="dB" />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {isFIR && (
+              <div className="pt-6 border-t border-white/[0.06]">
+                <h2 className="mb-5 text-[11px] font-bold tracking-widest text-slate-500 uppercase ml-1">
+                  {family === "fir_window" ? "Window Function" : "Transition Bandwidth"}
+                </h2>
+                {family === "fir_window" ? (
+                  <PillGroup
+                    value={firWindow as never}
+                    onChange={v => { setFirWindow(v); setApplySuccess(false); }}
+                    options={FIR_WINDOWS.map(w => ({ value: w, label: w.charAt(0).toUpperCase() + w.slice(1) }))}
+                  />
+                ) : (
+                  <NumInput id="trans-bw" label="Transition Bandwidth" value={transitionBw}
+                    onChange={v => { setTransitionBw(v); setApplySuccess(false); }}
+                    min={10} max={5000} step={10} unit="Hz" />
                 )}
               </div>
-            </section>
-          )}
-
-          {/* FIR window extras */}
-          {isFIR && (
-            <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 lg:p-8">
-              <h2 className="mb-5 text-[11px] font-bold tracking-widest text-slate-500 uppercase ml-1">
-                {family === "fir_window" ? "Window Function" : "Transition Bandwidth"}
-              </h2>
-              {family === "fir_window" ? (
-                <PillGroup
-                  value={firWindow as never}
-                  onChange={v => { setFirWindow(v); setApplySuccess(false); }}
-                  options={FIR_WINDOWS.map(w => ({ value: w, label: w.charAt(0).toUpperCase() + w.slice(1) }))}
-                />
-              ) : (
-                <NumInput id="trans-bw" label="Transition Bandwidth" value={transitionBw}
-                  onChange={v => { setTransitionBw(v); setApplySuccess(false); }}
-                  min={10} max={5000} step={10} unit="Hz"
-                  hint="Width of passband→stopband transition" />
-              )}
-            </section>
-          )}
-
-          {/* Apply button */}
-          <button
-            onClick={handleApply}
-            disabled={isApplying}
-            className="flex w-full items-center justify-center gap-2 rounded-xl
-              border border-indigo-500/30 bg-gradient-to-r from-indigo-600/20 to-violet-600/20
-              px-4 py-3 text-sm font-semibold text-indigo-200
-              hover:border-indigo-500/50 hover:from-indigo-600/30 hover:to-violet-600/30 hover:text-white
-              disabled:cursor-not-allowed disabled:opacity-40 transition-all duration-200"
-          >
-            {isApplying
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> Filtering…</>
-              : <><SlidersHorizontal className="h-4 w-4" /> Apply Filter</>}
-          </button>
-
-          {/* Inline Errors only */}
-          {applyError && (
-            <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              {applyError}
-            </div>
-          )}
-
-          {/* Preview playback */}
-          {processedUrl && (
-            <button onClick={togglePlay}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-2.5 text-sm font-medium text-indigo-200 hover:bg-indigo-500/20 hover:text-white transition-colors shadow-[0_0_15px_rgba(99,102,241,0.15)]">
-              {isPlaying ? <><Square className="h-4 w-4" /> Stop Preview</> : <><Play className="h-4 w-4" /> Play Filtered</>}
-            </button>
-          )}
+            )}
+          </section>
         </div>
 
         {/* ── Right: viz + education ── */}
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
 
           {/* Frequency response chart */}
-          <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 lg:p-8">
+          <section className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6 lg:p-8 shadow-sm">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-[11px] font-bold tracking-widest text-slate-500 uppercase ml-1">
                 Theoretical Frequency Response
@@ -652,84 +637,159 @@ export default function FilteringPage() {
             </div>
 
             {respError ? (
-              <div className="flex h-64 items-center justify-center rounded-xl border border-red-500/10 bg-red-500/5">
+              <div className="flex h-80 items-center justify-center rounded-xl border border-red-500/10 bg-red-500/5">
                 <p className="text-xs text-red-400">{respError}</p>
               </div>
             ) : freqResp ? (
-              <div className="h-64 w-full">
+              <div className="h-80 w-full">
                 <FrequencyResponseChart data={freqResp} sampleRateHz={sampleRateHz} />
               </div>
             ) : (
-              <div className="flex h-64 items-center justify-center">
+              <div className="flex h-80 items-center justify-center">
                 <Loader2 className="h-5 w-5 animate-spin text-indigo-400/40" />
               </div>
             )}
 
-            <div className="mt-2 flex flex-wrap gap-3 text-[9px] text-slate-600 font-mono">
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-px w-4 bg-indigo-400/70"></span>Response
+            <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-slate-500 font-mono">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-px w-5 bg-indigo-400/70"></span>Response
               </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-px w-4 border-t border-dashed border-violet-400/50"></span>Cutoff / edge
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-px w-5 border-t border-dashed border-violet-400/50"></span>Cutoff / edge
               </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-px w-4 border-t border-dashed border-yellow-400/30"></span>−3 dB
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-px w-5 border-t border-dashed border-yellow-400/30"></span>−3 dB
               </span>
             </div>
           </section>
 
-          {/* Educational card — family comparison */}
-          <section className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
-            <p className="mb-4 text-xs font-bold tracking-widest text-slate-500 uppercase">Filter Family Guide</p>
-            <div className="space-y-3 text-xs text-slate-400 leading-relaxed">
-              <p><span className="text-slate-200 font-semibold">Butterworth:</span> Maximally flat passband. No ripple. Good starting point.</p>
-              <p><span className="text-slate-200 font-semibold">Chebyshev I:</span> Equiripple passband — sharper roll-off than Butterworth at same order.</p>
-              <p><span className="text-slate-200 font-semibold">Chebyshev II:</span> Flat passband, equiripple stopband. Preferred when passband quality matters.</p>
-              <p><span className="text-slate-200 font-semibold">Elliptic:</span> Sharpest transition — ripple in both bands. Maximum efficiency per order.</p>
-              <p><span className="text-slate-200 font-semibold">Bessel:</span> Flat group delay → linear phase, clean time response. Poorer roll-off.</p>
-              <p><span className="text-slate-200 font-semibold">FIR Window:</span> Always stable, exact linear phase. Larger window = better stopband.</p>
-              <p><span className="text-slate-200 font-semibold">Parks-McClellan:</span> Optimal equiripple FIR via Remez algorithm. Minimax-optimal for given taps.</p>
-              <p><span className="text-slate-200 font-semibold">Peaking EQ:</span> Biquad boost/cut at centre frequency. Doesn't block — it shapes.</p>
+          {/* Educational card — dynamic family guide */}
+          <section className="rounded-3xl border border-white/[0.08] bg-[#161625] p-6 lg:p-8 text-sm text-slate-300 leading-relaxed shadow-sm">
+            <p className="mb-4 text-[11px] font-bold tracking-widest text-slate-500 uppercase border-b border-white/[0.05] pb-4">Filter Family Guide</p>
+            <div className="min-h-[4rem]">
+              {!isPeaking && family === "butterworth" && <p><strong className="text-white">Butterworth:</strong> Maximally flat magnitude response in the passband, no passband ripple. The most common choice for a clean, general-purpose filter without coloration, but has a slower transition to the stopband.</p>}
+              {!isPeaking && family === "chebyshev1" && <p><strong className="text-white">Chebyshev Type I:</strong> Introduces passband ripple to achieve a sharper transition to the stopband than Butterworth for a given order. Useful when separation is needed and slight magnitude ripple is acceptable.</p>}
+              {!isPeaking && family === "chebyshev2" && <p><strong className="text-white">Chebyshev Type II:</strong> Keeps a flat passband but introduces equiripple in the stopband. Achieves a sharper transition than Butterworth. Good when you want to avoid passband coloration but need tight filtering.</p>}
+              {!isPeaking && family === "elliptic" && <p><strong className="text-white">Elliptic (Cauer):</strong> The sharpest possible transition between passband and stopband for a given order. It allows ripples in both bands. Used when the absolute narrowest transition bandwidth is required.</p>}
+              {!isPeaking && family === "bessel" && <p><strong className="text-white">Bessel:</strong> Optimized for maximally flat group delay, preserving the wave shape of signals in the passband. Excellent for time-domain transients, but has a very gradual frequency roll-off.</p>}
+              {!isPeaking && family === "fir_window" && <p><strong className="text-white">FIR Window:</strong> Windowed Finite Impulse Response design. FIR filters are unconditionally stable and provide exact linear phase. The choice of window trades off transition width vs stopband attenuation.</p>}
+              {!isPeaking && family === "fir_remez" && <p><strong className="text-white">Parks-McClellan:</strong> Optimal equiripple FIR filter design using the Remez exchange algorithm. It minimizes the maximum error (minimax) in the specified bands, providing the most efficient FIR filter for given specifications.</p>}
+              {isPeaking && <p><strong className="text-white">Peaking EQ (Biquad):</strong> An Infinite Impulse Response biquad filter that boosts or cuts a specific centre frequency while leaving the rest of the spectrum unchanged. Common in parametric equalizers.</p>}
             </div>
           </section>
 
           {/* SOS note */}
-          <section className="rounded-2xl border border-white/[0.06] bg-white/[0.015] p-5 text-xs text-slate-400 leading-relaxed">
-            <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mb-3">Why SOS for IIR?</p>
-            <p>
-              Direct-form polynomial representations of high-order IIR filters cause
-              catastrophic floating-point cancellation (N ≥ 5–6). SOS factorises
-              H(z) into a cascade of second-order biquad sections — each well-conditioned.
-              All IIR families here use <code className="text-indigo-300/70">output='sos'</code> and are processed
-              with <code className="text-indigo-300/70">sosfiltfilt</code> for zero-phase offline output.
-            </p>
-          </section>
+          {!isFIR && (
+            <section className="rounded-3xl border border-white/[0.08] bg-[#161625] p-6 lg:p-8 text-[13px] text-slate-400 leading-relaxed shadow-sm">
+              <p className="text-slate-500 font-bold uppercase tracking-widest text-[11px] mb-3">Why SOS for IIR?</p>
+              <p>
+                Direct-form polynomials of high-order IIR filters cause catastrophic floating-point cancellation. Rigel uses Second-Order Sections (SOS) factorisation to cascade well-conditioned biquads. All IIR families are processed with <code className="text-indigo-300/70">sosfiltfilt</code> for zero-phase offline output.
+              </p>
+            </section>
+          )}
+          
+          {/* Group 4: Actions (Moved from left column) */}
+          <div className="flex flex-col gap-3 mt-auto pt-2">
+            {applyError && (
+              <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                {applyError}
+              </div>
+            )}
+            {applySuccess && !isApplying && (
+              <div className="mb-4 flex items-start gap-3 rounded-xl bg-cyan-500/10 p-4 border border-cyan-500/20">
+                <CheckCircle className="h-5 w-5 text-cyan-400 shrink-0 mt-0.5" />
+                <p className="text-cyan-200">Filter Applied.</p>
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-4 w-full">
+              <button
+                onClick={handleApply}
+                disabled={isApplying}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl
+                  border border-indigo-500/30 bg-gradient-to-r from-indigo-600/20 to-violet-600/20
+                  px-4 py-4 text-[15px] font-bold text-indigo-100
+                  hover:border-indigo-500/50 hover:from-indigo-600/30 hover:to-violet-600/30 hover:text-white
+                  disabled:cursor-not-allowed disabled:opacity-40 transition-all duration-200 uppercase tracking-widest shadow-[0_0_20px_rgba(79,70,229,0.15)]"
+              >
+                {isApplying
+                  ? <><Loader2 className="h-5 w-5 animate-spin" /> Filtering…</>
+                  : <><SlidersHorizontal className="h-5 w-5" /> Apply Filter</>}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Toast Notification */}
-      {showToast && (
-        <>
-          <style>{`
-            @keyframes toastShrink {
-              from { width: 100%; }
-              to { width: 0%; }
-            }
-          `}</style>
-          <div className="fixed bottom-6 right-6 z-50 flex animate-in fade-in slide-in-from-bottom-5 duration-300 flex-col overflow-hidden rounded-xl border border-white/20 bg-[#0d0d1a]/95 shadow-[0_0_15px_rgba(255,255,255,0.07)] backdrop-blur-xl">
-            <div className="flex items-center gap-3 px-5 py-4 text-sm font-medium text-slate-200">
-              <CheckCircle className="h-5 w-5 shrink-0 text-white" />
-              Filter applied — you can preview it or download from the sidebar.
+      {/* ── SIGNAL RESULT ── */}
+      <div className="mt-8 flex flex-col gap-8 border-t border-white/5 pt-12">
+
+        {/* 1. WAVEFORM COMPARISON — pre-filter fallback shows original only */}
+        {state.waveform && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">
+                {filteredWaveform ? "Waveform Comparison" : "Original Waveform"}
+              </h2>
             </div>
-            <div className="h-1 w-full bg-white/5">
-              <div 
-                className="h-full bg-white/80 origin-left" 
-                style={{ animation: "toastShrink 4s linear forwards" }} 
+
+            <div className="rounded-3xl border border-white/[0.08] bg-[#161625] p-4 shadow-sm overflow-hidden">
+              <WaveformComparison
+                original={state.waveform}
+                filtered={filteredWaveform}
+                currentTime={activePlayer === "filtered" ? filteredTime : originalTime}
+                onSeek={(time) => {
+                  setOriginalSeekTarget(time);
+                  setFilteredSeekTarget(time);
+                }}
               />
             </div>
+
+            {/* Compact audio players — below the waveform comparison */}
+            <div className="flex flex-col gap-3">
+              {state.objectUrl && (
+                <div className="flex flex-col gap-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 pl-1">Original</p>
+                  <AudioPlayer
+                    ref={originalAudioRef}
+                    src={state.objectUrl}
+                    duration={state.metadata.duration_seconds}
+                    onTimeUpdate={setOriginalTime}
+                    seekTarget={originalSeekTarget}
+                    onPlay={handlePlayOriginal}
+                  />
+                </div>
+              )}
+              {processedUrl && filteredWaveform && (
+                <div className="flex flex-col gap-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-500 pl-1">Filtered</p>
+                  <AudioPlayer
+                    ref={filteredAudioRef}
+                    src={processedUrl}
+                    duration={state.metadata.duration_seconds}
+                    onTimeUpdate={setFilteredTime}
+                    seekTarget={filteredSeekTarget}
+                    onPlay={handlePlayFiltered}
+                  />
+                </div>
+              )}
+            </div>
           </div>
-        </>
-      )}
+        )}
+
+        {/* 2. FREQUENCY SPECTRUM COMPARISON — replaces two separate spectrum cards */}
+        {state.spectrum && (
+          <div className="flex flex-col gap-4">
+            <h2 className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">
+              {filteredSpectrum ? "Frequency Spectrum Comparison" : "Original Audio Spectrum"}
+            </h2>
+            <div className="rounded-3xl border border-white/[0.08] bg-[#161625] p-4 shadow-sm overflow-hidden">
+              <SpectrumComparison original={state.spectrum} filtered={filteredSpectrum || null} />
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }

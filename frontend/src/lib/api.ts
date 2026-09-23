@@ -440,3 +440,67 @@ export async function applyFilter(
   return response.blob();
 }
 
+// ---------------------------------------------------------------------------
+// Denoising types (Module 07)
+// ---------------------------------------------------------------------------
+
+export type DenoiseMethod = "spectral_subtraction" | "wiener" | "logmmse" | "imcra";
+
+export type DenoiseParams = {
+  method: DenoiseMethod;
+  alpha?: number;
+  beta?: number;
+  alphaDd?: number;
+  noiseAlphaS?: number;
+  noiseBias?: number;
+  gMin?: number;
+  imcraAlphaS?: number;
+  imcraAlphaD?: number;
+};
+
+export async function applyDenoise(
+  file: File,
+  params: DenoiseParams,
+): Promise<Blob> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("method", params.method);
+
+  if (params.alpha !== undefined)
+    formData.append("alpha", params.alpha.toString());
+  if (params.beta !== undefined)
+    formData.append("beta", params.beta.toString());
+  if (params.alphaDd !== undefined)
+    formData.append("alpha_dd", params.alphaDd.toString());
+  if (params.noiseAlphaS !== undefined)
+    formData.append("noise_alpha_s", params.noiseAlphaS.toString());
+  if (params.noiseBias !== undefined)
+    formData.append("noise_bias", params.noiseBias.toString());
+  if (params.gMin !== undefined)
+    formData.append("g_min", params.gMin.toString());
+  if (params.imcraAlphaS !== undefined)
+    formData.append("imcra_alpha_s", params.imcraAlphaS.toString());
+  if (params.imcraAlphaD !== undefined)
+    formData.append("imcra_alpha_d", params.imcraAlphaD.toString());
+
+  const response = await fetch(`${API_BASE_URL}/api/audio/denoise`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let message = "Denoising failed.";
+    try {
+      const errorBody = (await response.json()) as { detail?: string };
+      if (errorBody.detail) {
+        message = errorBody.detail;
+      }
+    } catch {
+      message = `Denoising failed with ${response.status}.`;
+    }
+    throw new Error(message);
+  }
+
+  return await response.blob();
+}
+

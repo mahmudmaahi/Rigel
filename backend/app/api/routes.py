@@ -131,7 +131,6 @@ async def filter_audio(
     return await apply_filter_to_upload(file, req)
 
 
-
 @router.post("/audio/filter/response", response_model=AudioFilterResponse, tags=["filtering"])
 async def filter_frequency_response(request: AudioFilterResponseRequest) -> AudioFilterResponse:
     """Module 06 endpoint — compute the theoretical frequency response of a filter.
@@ -141,3 +140,38 @@ async def filter_frequency_response(request: AudioFilterResponseRequest) -> Audi
     transition behaviour before applying the filter.
     """
     return await get_filter_frequency_response(request)
+
+
+@router.post("/audio/denoise", tags=["audio", "denoise"])
+async def denoise_audio(
+    file: UploadFile | None = File(default=None),
+    method: str = Form(...),
+    alpha: float = Form(default=1.0),
+    beta: float = Form(default=0.01),
+    alpha_dd: float = Form(default=0.98),
+    noise_alpha_s: float = Form(default=0.98),
+    noise_bias: float = Form(default=1.5),
+    g_min: float = Form(default=0.01),
+    imcra_alpha_s: float = Form(default=0.86),
+    imcra_alpha_d: float = Form(default=0.85),
+):
+    """Module 07 — Apply statistical noise removal to an uploaded WAV file.
+
+    Supports Spectral Subtraction, Decision-Directed Wiener Filtering,
+    Log-MMSE, and IMCRA + OM-LSA.
+    """
+    from app.models.denoise import AudioDenoiseRequest
+    from app.services.denoise_service import apply_denoise_to_upload
+
+    req = AudioDenoiseRequest(
+        method=method,
+        alpha=alpha,
+        beta=beta,
+        alpha_dd=alpha_dd,
+        noise_alpha_s=noise_alpha_s,
+        noise_bias=noise_bias,
+        g_min=g_min,
+        imcra_alpha_s=imcra_alpha_s,
+        imcra_alpha_d=imcra_alpha_d,
+    )
+    return await apply_denoise_to_upload(file, req)
