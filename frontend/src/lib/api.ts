@@ -504,3 +504,104 @@ export async function applyDenoise(
   return await response.blob();
 }
 
+// ---------------------------------------------------------------------------
+// Voice Lab types and API (Module 09)
+// ---------------------------------------------------------------------------
+
+export type VoiceGainMode = "linear" | "db" | "peak" | "rms";
+
+export type VoiceGainOperation = { op: "gain"; mode: VoiceGainMode; gain_value: number };
+export type VoiceSpeedOperation = { op: "speed"; speed: number };
+export type VoiceTimeStretchOperation = { op: "time_stretch"; stretch: number };
+export type VoicePitchShiftOperation = { op: "pitch_shift"; semitones: number };
+export type VoiceTremoloEffect = { op: "tremolo"; rate_hz: number; depth: number };
+export type VoiceRingModEffect = { op: "ring_modulation"; carrier_hz: number };
+export type VoiceDelayEffect = { op: "delay"; delay_ms: number; feedback: number; mix: number };
+export type VoiceChorusEffect = { op: "chorus"; rate_hz: number; depth_ms: number; base_delay_ms: number; mix: number };
+export type VoiceDistortionEffect = { op: "soft_distortion"; drive: number };
+export type VoiceTimbreEffect = { op: "timbre"; tilt: number };
+export type VoiceReverbEffect = { op: "reverb"; room_size: number; decay: number; wet: number };
+
+export type VoiceEffect = 
+  | VoiceTremoloEffect 
+  | VoiceRingModEffect 
+  | VoiceDelayEffect 
+  | VoiceChorusEffect 
+  | VoiceDistortionEffect
+  | VoiceTimbreEffect
+  | VoiceReverbEffect;
+
+export type VoiceProcessRequest = {
+  samples: number[][];
+  sample_rate_hz: number;
+  gain?: VoiceGainOperation | null;
+  speed?: VoiceSpeedOperation | null;
+  time_stretch?: VoiceTimeStretchOperation | null;
+  pitch_shift?: VoicePitchShiftOperation | null;
+  effect?: VoiceEffect | null;
+  prevent_clipping?: boolean;
+};
+
+export type VoiceProcessResponse = {
+  status: string;
+  sample_rate_hz: number;
+  samples: number[][];
+  input_duration_s: number;
+  output_duration_s: number;
+  input_channels: number;
+  output_peak: number;
+  output_rms: number;
+  clipping_risk: boolean;
+  clipping_prevented: boolean;
+  operations_applied: string[];
+};
+
+export async function processVoiceLab(request: VoiceProcessRequest): Promise<VoiceProcessResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/audio/voice/process`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    let message = "Voice Lab processing failed.";
+    try { const err = (await response.json()) as { detail?: string }; if (err.detail) message = err.detail; } catch { /* ignore */ }
+    throw new Error(message);
+  }
+  return response.json() as Promise<VoiceProcessResponse>;
+}
+
+/** Decode a WAV Blob into list-of-channels float arrays via Web Audio API. */
+export async function decodeBlobToSamples(blob: Blob): Promise<{ samples: number[][]; sampleRate: number }> {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioCtx = new AudioContext();
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  await audioCtx.close();
+  const channels: number[][] = [];
+  for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
+    channels.push(Array.from(audioBuffer.getChannelData(c)));
+  }
+  return { samples: channels, sampleRate: audioBuffer.sampleRate };
+}
+
+/** Encode list-of-channels float arrays to a 16-bit PCM WAV Blob. */
+export function encodeSamplesToWavBlob(samples: number[][], sampleRate: number): Blob {
+  const numChannels = samples.length;
+  const numSamples = samples[0]?.length ?? 0;
+  const buf = new ArrayBuffer(44 + numSamples * numChannels * 2);
+  const v = new DataView(buf);
+  const ws = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + numSamples * numChannels * 2, true);
+  ws(8, "WAVE"); ws(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, numChannels, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * numChannels * 2, true);
+  v.setUint16(32, numChannels * 2, true); v.setUint16(34, 16, true);
+  ws(36, "data"); v.setUint32(40, numSamples * numChannels * 2, true);
+  let off = 44;
+  for (let i = 0; i < numSamples; i++) {
+    for (let c = 0; c < numChannels; c++) {
+      const s = Math.max(-1, Math.min(1, samples[c][i]));
+      v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true); off += 2;
+    }
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}

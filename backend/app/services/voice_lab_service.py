@@ -1,0 +1,227 @@
+"""
+app/services/voice_lab_service.py — Module 09: Voice Laboratory Service
+========================================================================
+
+Orchestrates the Voice Lab processing chain:
+
+    Input → Gain → Speed → TimeStretch → PitchShift → Effect → Output
+
+CRITICAL INVARIANT: Every recomputation begins from the original input
+array passed in the request.  This function is pure: it never reads or
+writes any mutable state outside its arguments.
+
+FastAPI layer passes validated request data here; DSP modules perform
+the mathematics.  This service converts between the API surface (lists
+of floats, Pydantic models) and the DSP layer (NumPy arrays).
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from app.models.voice_lab import (
+    VoiceProcessRequest,
+    VoiceProcessResponse,
+)
+from dsp_core.voice_gain import (
+    apply_db_gain,
+    apply_linear_gain,
+    apply_peak_normalization,
+    apply_rms_normalization,
+    measure_peak,
+    measure_rms,
+    VoiceDSPError,
+)
+from dsp_core.time_scale import apply_speed, apply_time_stretch
+from dsp_core.pitch_shift import apply_pitch_shift
+from dsp_core.effects import (
+    apply_tremolo,
+    apply_ring_modulation,
+    apply_delay,
+    apply_chorus,
+    apply_soft_distortion,
+    apply_timbre_tilt,
+    apply_reverb,
+)
+
+
+# ---------------------------------------------------------------------------
+# Conversion helpers
+# ---------------------------------------------------------------------------
+
+
+def _samples_to_numpy(samples: list[list[float]]) -> np.ndarray:
+    """Convert list-of-channels to a [N] or [N, C] float64 NumPy array.
+
+    Input:  [[ch0_s0, ch0_s1, ...], [ch1_s0, ...]]   (C channels × N samples)
+    Output: shape [N] if C=1, else [N, C].
+    """
+    arr = np.array(samples, dtype=np.float64)   # shape [C, N]
+    if arr.shape[0] == 1:
+        return arr[0]                             # mono: [N]
+    return arr.T                                  # stereo: [N, C]
+
+
+def _numpy_to_samples(arr: np.ndarray) -> list[list[float]]:
+    """Convert [N] or [N, C] NumPy array to list-of-channels."""
+    if arr.ndim == 1:
+        return [arr.tolist()]
+    return [arr[:, c].tolist() for c in range(arr.shape[1])]
+
+
+# ---------------------------------------------------------------------------
+# Neutral-parameter bypass checks
+# ---------------------------------------------------------------------------
+
+_SPEED_IDENTITY_TOL = 1e-9
+_STRETCH_IDENTITY_TOL = 1e-9
+_SEMITONES_IDENTITY_TOL = 1e-9
+
+
+def _is_speed_neutral(speed: float) -> bool:
+    return abs(speed - 1.0) < _SPEED_IDENTITY_TOL
+
+
+def _is_stretch_neutral(stretch: float) -> bool:
+    return abs(stretch - 1.0) < _STRETCH_IDENTITY_TOL
+
+
+def _is_pitch_neutral(semitones: float) -> bool:
+    return abs(semitones) < _SEMITONES_IDENTITY_TOL
+
+
+# ---------------------------------------------------------------------------
+# Main orchestration
+# ---------------------------------------------------------------------------
+
+
+def process_voice_lab(req: VoiceProcessRequest) -> VoiceProcessResponse:
+    """Execute the Voice Lab processing chain from the original input.
+
+    Chain order (deterministic, non-reorderable):
+        Gain → Speed → TimeStretch → PitchShift → Effect
+
+    Returns a VoiceProcessResponse with processed samples, metadata,
+    and clipping information.
+
+    Raises
+    ------
+    VoiceDSPError:
+        If any DSP operation produces NaN/Inf output.
+    ValueError:
+        If any operation parameter is out of range.
+    """
+    # Convert input to numpy — this is the ORIGINAL that we always start from.
+    x = _samples_to_numpy(req.samples)
+    sr = req.sample_rate_hz
+    input_samples = x.shape[0]
+    input_channels = 1 if x.ndim == 1 else x.shape[1]
+    input_duration = input_samples / sr
+
+    current = x.copy()
+    applied: list[str] = []
+
+    # ------------------------------------------------------------------ Gain
+    if req.gain is not None:
+        g = req.gain
+        if g.mode == "linear":
+            current = apply_linear_gain(current, g.gain_value)
+            applied.append(f"gain(linear, {g.gain_value:.4g})")
+        elif g.mode == "db":
+            if abs(g.gain_value) > 1e-9:   # 0 dB is strict identity
+                current = apply_db_gain(current, g.gain_value)
+                applied.append(f"gain({g.gain_value:+.2f} dB)")
+        elif g.mode == "peak":
+            current = apply_peak_normalization(current, g.gain_value)
+            applied.append(f"peak_norm(target={g.gain_value:.4g})")
+        elif g.mode == "rms":
+            current = apply_rms_normalization(current, g.gain_value)
+            applied.append(f"rms_norm(target={g.gain_value:.4g})")
+
+    # ----------------------------------------------------------------- Speed
+    if req.speed is not None and not _is_speed_neutral(req.speed.speed):
+        current = apply_speed(current, sr, req.speed.speed)
+        applied.append(f"speed({req.speed.speed:.4g}x)")
+
+    # ---------------------------------------------------------- Time Stretch
+    if req.time_stretch is not None and not _is_stretch_neutral(req.time_stretch.stretch):
+        current = apply_time_stretch(current, sr, req.time_stretch.stretch)
+        applied.append(f"time_stretch({req.time_stretch.stretch:.4g}x)")
+
+    # ---------------------------------------------------------- Pitch Shift
+    if req.pitch_shift is not None and not _is_pitch_neutral(req.pitch_shift.semitones):
+        current = apply_pitch_shift(current, sr, req.pitch_shift.semitones)
+        applied.append(f"pitch_shift({req.pitch_shift.semitones:+.2f} semitones)")
+
+    # ---------------------------------------------------------------- Effect
+    if req.effect is not None:
+        op = req.effect.op
+
+        if op == "tremolo":
+            e = req.effect
+            current = apply_tremolo(current, sr, e.rate_hz, e.depth)
+            applied.append(f"tremolo(rate={e.rate_hz}Hz, depth={e.depth})")
+
+        elif op == "ring_modulation":
+            e = req.effect
+            current = apply_ring_modulation(current, sr, e.carrier_hz)
+            applied.append(f"ring_modulation(carrier={e.carrier_hz}Hz)")
+
+        elif op == "delay":
+            e = req.effect
+            current = apply_delay(current, sr, e.delay_ms, e.feedback, e.mix)
+            applied.append(f"delay({e.delay_ms}ms, fb={e.feedback}, mix={e.mix})")
+
+        elif op == "chorus":
+            e = req.effect
+            current = apply_chorus(
+                current, sr, e.rate_hz, e.depth_ms, e.base_delay_ms, e.mix
+            )
+            applied.append(
+                f"chorus(rate={e.rate_hz}Hz, depth={e.depth_ms}ms, "
+                f"base={e.base_delay_ms}ms, mix={e.mix})"
+            )
+
+        elif op == "soft_distortion":
+            e = req.effect
+            current = apply_soft_distortion(current, e.drive)
+            applied.append(f"soft_distortion(drive={e.drive})")
+
+        elif op == "timbre":
+            e = req.effect
+            current = apply_timbre_tilt(current, sr, e.tilt)
+            applied.append(f"timbre(tilt={e.tilt:.2f})")
+
+        elif op == "reverb":
+            e = req.effect
+            current = apply_reverb(current, sr, e.room_size, e.decay, e.wet)
+            applied.append(f"reverb(room={e.room_size:.2f}, decay={e.decay:.2f}, wet={e.wet:.2f})")
+
+    # ------------------------------------------------- Measure output quality
+    raw_peak = measure_peak(current)
+    raw_rms = measure_rms(current)
+    clipping_risk = raw_peak > 1.0
+    clipping_prevented = False
+
+    # Explicit clipping prevention (only if requested — never silent)
+    if req.prevent_clipping and clipping_risk:
+        current = apply_peak_normalization(current, 1.0)
+        clipping_prevented = True
+        applied.append("prevent_clipping(peak_norm → 1.0)")
+
+    output_samples = current.shape[0]
+    output_duration = output_samples / sr
+
+    return VoiceProcessResponse(
+        status="processed",
+        sample_rate_hz=sr,
+        samples=_numpy_to_samples(current),
+        input_duration_s=round(input_duration, 6),
+        output_duration_s=round(output_duration, 6),
+        input_channels=input_channels,
+        output_peak=round(float(raw_peak), 8),
+        output_rms=round(float(raw_rms), 8),
+        clipping_risk=clipping_risk,
+        clipping_prevented=clipping_prevented,
+        operations_applied=applied,
+    )

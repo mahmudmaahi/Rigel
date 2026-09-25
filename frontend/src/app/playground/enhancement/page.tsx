@@ -10,10 +10,8 @@ import {
   type DenoiseParams,
   type SpectrumData,
 } from "@/lib/api";
-import { SpectrumComparison } from "@/components/audio/spectrum-comparison";
-import { WaveformComparison } from "@/components/audio/waveform-comparison";
-import { AudioPlayer, type AudioPlayerRef } from "@/components/audio/audio-player";
-import { Loader2, Music, CheckCircle, AlertCircle, Info, ChevronUp, ChevronDown } from "lucide-react";
+import { SignalComparison } from "@/components/audio/signal-comparison";
+import { Loader2, Music, CheckCircle, AlertCircle, Info, ChevronUp, ChevronDown, FileAudio } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Data
@@ -131,16 +129,9 @@ function MethodGrid({
 // ---------------------------------------------------------------------------
 
 export default function EnhancementPage() {
-  const { state, setProcessedAudio, setFilteredWaveform, setFilteredSpectrum } = usePlayground();
+  const { state, setProcessedAudio, setFilteredWaveform, setFilteredSpectrum, uploadFile } = usePlayground();
 
-  const originalPlayerRef = useRef<AudioPlayerRef>(null);
-  const processedPlayerRef = useRef<AudioPlayerRef>(null);
 
-  const [originalTime, setOriginalTime] = useState(0);
-  const [processedTime, setProcessedTime] = useState(0);
-  const [originalSeekTarget, setOriginalSeekTarget] = useState<number | undefined>();
-  const [processedSeekTarget, setProcessedSeekTarget] = useState<number | undefined>();
-  const [activePlayer, setActivePlayer] = useState<"original" | "processed" | null>(null);
   const [processedUrl, setProcessedUrl] = useState<string | undefined>(undefined);
 
   const [method, setMethod] = useState<DenoiseMethod>("spectral_subtraction");
@@ -158,10 +149,10 @@ export default function EnhancementPage() {
   useEffect(() => {
     if (processedAudio) {
       const url = URL.createObjectURL(processedAudio);
-      setProcessedUrl(url);
+      setTimeout(() => setProcessedUrl(url), 0);
       return () => URL.revokeObjectURL(url);
     } else {
-      setProcessedUrl(undefined);
+      setTimeout(() => setProcessedUrl(undefined), 0);
     }
   }, [processedAudio]);
 
@@ -178,17 +169,6 @@ export default function EnhancementPage() {
     }
   };
 
-  // Handle Mutually Exclusive Playback
-  const handleOriginalPlay = useCallback(() => {
-    setActivePlayer("original");
-    processedPlayerRef.current?.pause();
-  }, []);
-
-  const handleProcessedPlay = useCallback(() => {
-    setActivePlayer("processed");
-    originalPlayerRef.current?.pause();
-  }, []);
-
   // Run Denoising
   const handleDenoise = async () => {
     if (state.status !== "success") return;
@@ -197,9 +177,7 @@ export default function EnhancementPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    // Stop playback
-    originalPlayerRef.current?.pause();
-    processedPlayerRef.current?.pause();
+
 
     try {
       const params: DenoiseParams = { method };
@@ -235,189 +213,141 @@ export default function EnhancementPage() {
     }
   };
 
-  if (state.status !== "success") {
-    return null;
-  }
+  // No early return here so we can pre-visualize the enhancement controls!
 
-  const hasProcessedData = state.processedAudio && state.filteredWaveform && state.filteredSpectrum;
+  const hasProcessedData = state.status === "success" && state.processedAudio && state.filteredWaveform && state.filteredSpectrum;
 
   return (
     <div className="flex flex-col gap-6 lg:gap-10 max-w-[100rem] mx-auto pb-20">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-3">
-            <Music className="h-6 w-6 text-indigo-400" />
-            Noise Removal
-          </h1>
-          <p className="mt-2 text-sm text-slate-400 max-w-2xl">
-            Classical statistical offline denoising. Track and remove noise using frequency-domain estimation.
-          </p>
-        </div>
+      <div className="flex flex-col items-center justify-center text-center mt-4 mb-10">
+        <h1 className="flex items-center justify-center gap-3 text-3xl font-bold tracking-tight sm:text-4xl text-white">
+          <Music className="h-8 w-8 text-indigo-400" />
+          Noise Removal
+        </h1>
+        <p className="mt-4 text-base text-slate-400 max-w-2xl mx-auto">
+          Classical statistical offline denoising. Track and remove noise using frequency-domain estimation.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8 min-w-0">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 min-w-0">
         
-        {/* Left Column: Controls */}
-        <div className="xl:col-span-5 flex flex-col gap-6 min-w-0">
-          <div className="rounded-3xl border border-white/10 bg-[#0c0c16]/80 p-6 shadow-2xl backdrop-blur-sm">
+        {/* Left Column: Processing Method */}
+        <div className="flex flex-col gap-6 min-w-0">
+
+          {state.status !== "success" && (
+            <div className="p-5 border border-dashed border-white/10 rounded-2xl bg-white/[0.02] text-center flex flex-col items-center justify-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-full bg-white/5">
+                <FileAudio className="h-4 w-4 text-slate-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-300">No audio loaded</p>
+                <p className="text-xs text-slate-500 mt-1">Upload a WAV file from the sidebar to begin.</p>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-3xl border border-white/10 bg-[#0c0c16]/80 p-6 shadow-2xl backdrop-blur-sm h-full">
             <h2 className="text-sm font-bold tracking-widest text-slate-400 uppercase mb-5">
               Processing Method
             </h2>
             <MethodGrid value={method} onChange={handleMethodChange} />
-
-            <div className="mt-8 border-t border-white/[0.06] pt-6">
-              <h2 className="text-sm font-bold tracking-widest text-slate-400 uppercase mb-5">
-                Parameters
-              </h2>
-
-              <div className="flex flex-col gap-6">
-                {method === "spectral_subtraction" && (
-                  <>
-                    <NumInput
-                      id="alpha" label="Oversubtraction Factor (α)"
-                      value={alpha} onChange={setAlpha}
-                      min={1.0} max={10.0} step={0.1}
-                      hint="Amount of noise to subtract. > 1 reduces residual noise but adds distortion."
-                    />
-                    <NumInput
-                      id="beta" label="Spectral Floor (β)"
-                      value={beta} onChange={setBeta}
-                      min={0.001} max={0.1} step={0.001}
-                      hint="Minimum permitted power ratio to prevent musical noise artifacts."
-                    />
-                  </>
-                )}
-
-                {(method === "wiener" || method === "logmmse" || method === "imcra") && (
-                  <NumInput
-                    id="alpha_dd" label="Decision-Directed Smoothing (α_DD)"
-                    value={alphaDd} onChange={setAlphaDd}
-                    min={0.9} max={0.999} step={0.01}
-                    hint="A-priori SNR smoothing. Higher values reduce musical noise but blur transients."
-                  />
-                )}
-
-                {method === "imcra" && (
-                  <NumInput
-                    id="g_min" label="OM-LSA Gain Floor (G_min)"
-                    value={gMin} onChange={setGMin}
-                    min={0.001} max={0.1} step={0.01}
-                    hint="Minimum gain applied when speech is absent."
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="mt-8 pt-6 border-t border-white/[0.06]">
-              {errorMsg && (
-                <div className="mb-4 flex items-start gap-3 rounded-xl bg-red-500/10 p-4 border border-red-500/20">
-                  <AlertCircle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-200">{errorMsg}</p>
-                </div>
-              )}
-              {successMsg && !isProcessing && (
-                <div className="mb-4 flex items-start gap-3 rounded-xl bg-cyan-500/10 p-4 border border-cyan-500/20">
-                  <CheckCircle className="h-5 w-5 text-cyan-400 shrink-0 mt-0.5" />
-                  <p className="text-sm text-cyan-200">{successMsg}</p>
-                </div>
-              )}
-
-              <button
-                onClick={handleDenoise}
-                disabled={isProcessing}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-4 text-base font-bold text-white transition-all hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_30px_rgba(79,70,229,0.5)]"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Processing Audio...
-                  </>
-                ) : (
-                  <>
-                    <Music className="h-5 w-5" />
-                    Run Denoising
-                  </>
-                )}
-              </button>
-            </div>
           </div>
         </div>
 
-        {/* Right Column: Visualization & Playback */}
-        <div className="xl:col-span-7 flex flex-col gap-6 min-w-0">
-          {/* Audio Players */}
-          <div className="grid grid-cols-1 gap-4">
-            <div className="rounded-3xl border border-white/10 bg-[#0c0c16]/80 p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="h-2 w-2 rounded-full bg-indigo-400"></div>
-                <h3 className="text-sm font-bold tracking-widest text-slate-300 uppercase">Original Signal</h3>
-              </div>
-              <AudioPlayer 
-                ref={originalPlayerRef} 
-                src={state.objectUrl} 
-                duration={state.metadata.duration_seconds}
-                onPlay={handleOriginalPlay} 
-                onTimeUpdate={setOriginalTime}
-                seekTarget={originalSeekTarget}
-              />
-            </div>
+        {/* Right Column: Parameters */}
+        <div className="flex flex-col gap-6 min-w-0">
+          <div className="rounded-3xl border border-white/10 bg-[#0c0c16]/80 p-6 shadow-2xl backdrop-blur-sm h-full">
+            <h2 className="text-sm font-bold tracking-widest text-slate-400 uppercase mb-5">
+              Parameters
+            </h2>
 
-            <div className="rounded-3xl border border-white/10 bg-[#0c0c16]/80 p-6 relative overflow-hidden">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="h-2 w-2 rounded-full bg-cyan-400"></div>
-                <h3 className="text-sm font-bold tracking-widest text-slate-300 uppercase">Processed Signal</h3>
-              </div>
-              {hasProcessedData && processedUrl ? (
-                <AudioPlayer 
-                  ref={processedPlayerRef} 
-                  src={processedUrl} 
-                  duration={state.metadata.duration_seconds}
-                  onPlay={handleProcessedPlay} 
-                  onTimeUpdate={setProcessedTime}
-                  seekTarget={processedSeekTarget}
+            <div className="flex flex-col gap-6">
+              {method === "spectral_subtraction" && (
+                <>
+                  <NumInput
+                    id="alpha" label="Oversubtraction Factor (α)"
+                    value={alpha} onChange={setAlpha}
+                    min={1.0} max={10.0} step={0.1}
+                    hint="Amount of noise to subtract. > 1 reduces residual noise but adds distortion."
+                  />
+                  <NumInput
+                    id="beta" label="Spectral Floor (β)"
+                    value={beta} onChange={setBeta}
+                    min={0.001} max={0.1} step={0.001}
+                    hint="Minimum permitted power ratio to prevent musical noise artifacts."
+                  />
+                </>
+              )}
+
+              {(method === "wiener" || method === "logmmse" || method === "imcra") && (
+                <NumInput
+                  id="alpha_dd" label="Decision-Directed Smoothing (α_DD)"
+                  value={alphaDd} onChange={setAlphaDd}
+                  min={0.9} max={0.999} step={0.01}
+                  hint="A-priori SNR smoothing. Higher values reduce musical noise but blur transients."
                 />
-              ) : (
-                <div className="flex flex-col items-center justify-center py-6 text-slate-500 border border-dashed border-white/10 rounded-xl bg-white/[0.02]">
-                  <Info className="h-5 w-5 mb-2 opacity-50" />
-                  <p className="text-sm">Run denoising to generate enhanced audio.</p>
-                </div>
+              )}
+
+              {method === "imcra" && (
+                <NumInput
+                  id="g_min" label="OM-LSA Gain Floor (G_min)"
+                  value={gMin} onChange={setGMin}
+                  min={0.001} max={0.1} step={0.01}
+                  hint="Minimum gain applied when speech is absent."
+                />
               )}
             </div>
           </div>
-
-          {/* Visual Comparisons */}
-          {hasProcessedData && (
-            <div className="flex flex-col gap-6 min-w-0">
-              <div className="rounded-3xl border border-white/10 bg-[#0c0c16]/80 p-6 flex flex-col min-w-0 overflow-hidden">
-                <h3 className="text-sm font-bold tracking-widest text-slate-300 uppercase mb-4">Waveform Comparison</h3>
-                <div className="w-full min-w-0">
-                  <WaveformComparison
-                    original={state.waveform}
-                    filtered={state.filteredWaveform!}
-                    filteredLabel="Processed"
-                    currentTime={activePlayer === "processed" ? processedTime : originalTime}
-                    onSeek={(time) => {
-                      setOriginalSeekTarget(time);
-                      setProcessedSeekTarget(time);
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-white/10 bg-[#0c0c16]/80 p-6 flex flex-col min-w-0 overflow-hidden">
-                <h3 className="text-sm font-bold tracking-widest text-slate-300 uppercase mb-4">Spectrum Comparison</h3>
-                <div className="w-full min-w-0">
-                  <SpectrumComparison
-                    original={state.spectrum!}
-                    filtered={state.filteredSpectrum!}
-                    filteredLabel="Processed"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
+
+      <div className="mt-8 pt-6 border-t border-white/[0.06] max-w-2xl mx-auto w-full">
+        {errorMsg && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl bg-red-500/10 p-4 border border-red-500/20">
+            <AlertCircle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-200">{errorMsg}</p>
+          </div>
+        )}
+        {successMsg && !isProcessing && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl bg-cyan-500/10 p-4 border border-cyan-500/20">
+            <CheckCircle className="h-5 w-5 text-cyan-400 shrink-0 mt-0.5" />
+            <p className="text-sm text-cyan-200">{successMsg}</p>
+          </div>
+        )}
+
+        <button
+          onClick={handleDenoise}
+          disabled={isProcessing || state.status !== "success"}
+          className="w-full flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-4 text-base font-bold text-white transition-all hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_30px_rgba(79,70,229,0.5)]"
+        >
+          {isProcessing ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Processing Audio...
+            </>
+          ) : (
+            <>
+              <Music className="h-5 w-5" />
+              Run Denoising
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* SIGNAL RESULT */}
+      {state.status === "success" && state.waveform && (
+        <SignalComparison
+          originalWaveform={state.waveform}
+          processedWaveform={state.filteredWaveform || null}
+          originalSpectrum={state.spectrum!}
+          processedSpectrum={state.filteredSpectrum || null}
+          originalAudioUrl={state.objectUrl!}
+          processedAudioUrl={processedUrl || null}
+          originalDuration={state.metadata.duration_seconds}
+          processedDuration={state.metadata.duration_seconds}
+          processedLabel="Processed"
+        />
+      )}
     </div>
   );
 }

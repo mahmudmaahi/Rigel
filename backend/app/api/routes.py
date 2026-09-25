@@ -23,8 +23,12 @@ from app.services.filter_service import (
 )
 from app.services.status_service import get_health, get_project_status
 from app.services.export_service import export_samples_to_wav
+from app.api.vad import router as vad_router
+from app.models.voice_lab import VoiceProcessRequest, VoiceProcessResponse
+from app.services.voice_lab_service import process_voice_lab
 
 router = APIRouter()
+router.include_router(vad_router, prefix="/vad", tags=["vad"])
 
 
 @router.get("/health", response_model=HealthResponse, tags=["status"])
@@ -175,3 +179,33 @@ async def denoise_audio(
         imcra_alpha_d=imcra_alpha_d,
     )
     return await apply_denoise_to_upload(file, req)
+
+
+@router.post("/audio/voice/process", response_model=VoiceProcessResponse, tags=["voice-lab"])
+def voice_process(request: VoiceProcessRequest) -> VoiceProcessResponse:
+    """Module 09 — Apply the Voice Lab processing chain to audio samples.
+
+    Canonical chain (non-reorderable):
+        Input → Gain → Speed → TimeStretch → PitchShift → Effect → Output
+
+    All processing begins from the original input samples.
+    Never feeds previous processed output back into the chain.
+
+    Operations with neutral parameters are bypassed:
+        gain: mode=db, gain_value=0.0 (0 dB)
+        speed: speed=1.0
+        time_stretch: stretch=1.0
+        pitch_shift: semitones=0.0
+        effect: null
+
+    If prevent_clipping=True and output peak > 1.0, peak normalization is
+    applied as an explicit final step and reported in the response.
+    The output is never silently normalized otherwise.
+    """
+    from fastapi import HTTPException
+    try:
+        return process_voice_lab(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Voice Lab DSP error: {exc}") from exc

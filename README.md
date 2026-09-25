@@ -2,7 +2,7 @@
 
 Team Orion's Rigel project is an incremental intelligent audio platform. The current implementation is **Module 07 — Noise Removal**: Classical statistical offline denoising. Features four progressive approaches: Improved Spectral Subtraction, Decision-Directed Wiener Filtering, Log-MMSE, and IMCRA + OM-LSA. Built upon a unified STFT analysis/synthesis framework in the new `dsp_core/denoise.py` module.
 
-Rigel does **not** yet implement denoising, VAD, voice effects, ANC, desktop functionality, or AI. Those belong to later modules.
+Rigel does **not** yet implement voice effects, ANC, desktop functionality, or AI. Those belong to later modules.
 
 ## Project Structure
 
@@ -167,11 +167,18 @@ The frontend uses the browser's local `File` object URL (`URL.createObjectURL`) 
   - **IMCRA + OM-LSA**: Advanced dual-iteration noise tracking with speech-presence probability (SPP) controlled geometric gain modification.
 - **Conceptual Progression**: The module advances structurally from raw frequency-domain attenuation -> statistical estimation -> decision-directed enhancement -> advanced speech-presence-controlled enhancement.
 - **Rigel's Current Approach**: Rigel explicitly uses classical statistical DSP (separating noise tracking from gain estimation) rather than deep learning. It does not claim to be a perfect universal denoiser; it is an educational laboratory for observing the fundamental mathematical behaviors and limits of traditional algorithms.
-- **Next Module**: Module 08 — Voice Activity Detection (VAD).
 - `frontend/src/app/playground/enhancement/page.tsx` — Full integration of the noise removal algorithms into the UI.
   - Dynamic parameter controls tailored to each method.
   - Real-time synchronized playback and visual comparison between the original signal and the processed output.
 - Extensive backend testing (486 total tests) covering edge cases, initialization behaviors, mathematical validity, and structural limits of the estimators.
+
+### Module 08 — Voice Activity Detection
+
+- **Status:** Final integration validation.
+- **Architecture:** Real-time VAD processing via a WebSocket session that connects an audio source (Microphone or Shared Audio) to a selected VAD engine.
+- **Engines:** Integrates **Silero** (neural) and **TEN VAD** (classical/hybrid). These are external libraries; Rigel provides the orchestration, session management, and UI.
+- **State Separation:** Audio/Source state (what is playing) is architecturally separated from VAD state (which engine is processing). Engine hot-swapping is supported without full page reloads or dropping the audio context.
+- **Engineering Contributions:** Common engine interface, float32 chunk adaptation, WebSocket transport, sample-rate adjustment, backend-confirmed engine identity, and real-time visualization.
 
 ### Module 06 — Audio Filtering
 
@@ -191,6 +198,18 @@ The frontend uses the browser's local `File` object URL (`URL.createObjectURL`) 
   - Toast notifications and "Play Filtered" / "Download Filtered WAV" audio integration.
 - Extensive backend tests covering zero-phase outputs, FIR tap counts, Nyquist validations, error raising, parameter combinations, and peaking EQ constraints.
 
+
+### Module 09 — Voice Laboratory (COMPLETE)
+
+- `backend/dsp_core/time_scale.py` — Phase vocoder pitch-preserving time-stretch (Speed/Stretch) and standard raw resampling.
+- `backend/dsp_core/voice_gain.py` — Multi-mode gain and normalization (dB, linear, peak, RMS).
+- `backend/dsp_core/pitch_shift.py` — High-quality pitch shifting combining phase vocoder time-stretch and raw resampling (`stretch * r`, then `speed * r`).
+- `backend/dsp_core/effects.py` — Classical effects (Tremolo, Ring Modulation, Delay, Chorus, Soft Distortion, Timbre/Spectral Tilt, Schroeder Reverb) with strict NaN/Inf rejection.
+- FastAPI endpoint: `POST /api/audio/voice/process` — single orchestration endpoint supporting a deterministic DSP chain (Gain → Speed → Time Stretch → Pitch Shift → Effect → Output) with strict clipping risk tracking and optional normalization.
+- `frontend/src/app/playground/voice-lab/page.tsx` — Transformation Observatory UI:
+  - Comprehensive controls with mathematical equations shown for the active operations.
+  - Dual A/B panel comparing the original audio waveform and spectrum with the processed output.
+  - Independent audio players and detailed output metrics (duration, peak, RMS).
 
 ### Bin timestamp convention
 
@@ -523,10 +542,10 @@ Long audio can produce hundreds of thousands of raw FFT bins. The display spectr
 [x] Module 05 — Spectrogram / STFT
 [x] Module 06 — Digital Filters
 [x] Module 07 — Noise Removal
-[ ] Module 08 — Voice Activity Detection
-[ ] Module 09 — Voice Tweaks
+[ ] Module 08 — Voice Activity Detection (Status: Final integration validation)
+[ ] Module 09 — Voice Laboratory
 ```
 
 ## Next Module
 
-**Module 08 — Voice Activity Detection** — implement classical time-domain and frequency-domain VAD features. Do not begin Module 08 until explicitly instructed.
+**Module 09 — Voice Laboratory** — classical DSP for manipulating amplitude, time, pitch, and spectral character. Do not begin Module 09 until explicitly instructed.

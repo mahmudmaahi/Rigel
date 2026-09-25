@@ -13,12 +13,8 @@ import {
   type FilterResponseData,
   type SpectrumData,
 } from "@/lib/api";
-import { SpectrumViewer } from "@/components/audio/spectrum-viewer";
-import { WaveformViewer } from "@/components/audio/waveform-viewer";
-import { WaveformComparison } from "@/components/audio/waveform-comparison";
-import { SpectrumComparison } from "@/components/audio/spectrum-comparison";
-import { AudioPlayer, type AudioPlayerRef } from "@/components/audio/audio-player";
-import { SlidersHorizontal, Loader2, CheckCircle, AlertCircle, Info, ChevronUp, ChevronDown } from "lucide-react";
+import { SlidersHorizontal, Loader2, CheckCircle, AlertCircle, Info, ChevronUp, ChevronDown, FileAudio } from "lucide-react";
+import { SignalComparison } from "@/components/audio/signal-comparison";
 
 // ---------------------------------------------------------------------------
 // Data
@@ -328,7 +324,7 @@ function FrequencyResponseChart({
 // ---------------------------------------------------------------------------
 
 export default function FilteringPage() {
-  const { state, setProcessedAudio, setFilteredSpectrum, setFilteredWaveform } = usePlayground();
+  const { state, setProcessedAudio, setFilteredSpectrum, setFilteredWaveform, uploadFile } = usePlayground();
 
   // Filter type & family
   const [filterType, setFilterType] = useState<FilterType>("lowpass");
@@ -361,20 +357,10 @@ export default function FilteringPage() {
   const [freqResp, setFreqResp]       = useState<FilterResponseData | null>(null);
   const [respError, setRespError]     = useState<string | null>(null);
   
-  // Playback
   const processedAudio = state.status === "success" ? state.processedAudio : null;
   const filteredSpectrum = state.status === "success" ? state.filteredSpectrum : null;
   const filteredWaveform = state.status === "success" ? state.filteredWaveform : null;
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
-  
-  const originalAudioRef = useRef<AudioPlayerRef>(null);
-  const filteredAudioRef = useRef<AudioPlayerRef>(null);
-
-  const [originalTime, setOriginalTime] = useState(0);
-  const [filteredTime, setFilteredTime] = useState(0);
-  const [originalSeekTarget, setOriginalSeekTarget] = useState<number | undefined>();
-  const [filteredSeekTarget, setFilteredSeekTarget] = useState<number | undefined>();
-  const [activePlayer, setActivePlayer] = useState<"original" | "filtered" | null>(null);
 
   const sampleRateHz = state.status === "success" ? state.metadata.sample_rate_hz : 44100;
   const nyquist = sampleRateHz / 2;
@@ -403,7 +389,6 @@ export default function FilteringPage() {
 
   // Debounced frequency response fetch
   const fetchResp = useCallback(async () => {
-    if (state.status !== "success") return;
     setIsFetching(true);
     setRespError(null);
     try {
@@ -416,7 +401,7 @@ export default function FilteringPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sampleRateHz, filterType, family, order, cutoffHz, lowHz, highHz,
-      rippleDb, attenuationDb, firWindow, transitionBw, centerHz, gainDb, qFactor, state.status]);
+      rippleDb, attenuationDb, firWindow, transitionBw, centerHz, gainDb, qFactor]);
 
   useEffect(() => {
     const t = setTimeout(fetchResp, 400);
@@ -464,31 +449,7 @@ export default function FilteringPage() {
     }
   };
 
-  const handlePlayOriginal = () => {
-    setActivePlayer("original");
-    if (filteredAudioRef.current) {
-      filteredAudioRef.current.reset();
-    }
-  };
 
-  const handlePlayFiltered = () => {
-    setActivePlayer("filtered");
-    if (originalAudioRef.current) {
-      originalAudioRef.current.reset();
-    }
-  };
-
-  if (state.status !== "success") {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
-        <SlidersHorizontal className="h-12 w-12 text-indigo-400/30" />
-        <h2 className="text-lg font-semibold text-slate-300">No Audio Loaded</h2>
-        <p className="text-sm text-slate-500 max-w-xs">
-          Upload a WAV file from the sidebar to begin filtering.
-        </p>
-      </div>
-    );
-  }
 
   const activeFamilyInfo = FAMILIES.find(f => f.value === family);
 
@@ -511,6 +472,18 @@ export default function FilteringPage() {
 
         {/* ── Left: controls ── */}
         <div className="flex flex-col gap-6">
+
+          {state.status !== "success" && (
+            <div className="p-5 border border-dashed border-white/10 rounded-2xl bg-white/[0.02] text-center flex flex-col items-center justify-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-full bg-white/5">
+                <FileAudio className="h-4 w-4 text-slate-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-300">No audio loaded</p>
+                <p className="text-xs text-slate-500 mt-1">Upload a WAV file from the sidebar to begin.</p>
+              </div>
+            </div>
+          )}
 
           {/* Group 1: Filter Type & Family */}
           <div className="flex flex-col gap-6 rounded-3xl border border-white/[0.08] bg-[#161625] p-6 lg:p-8 shadow-sm">
@@ -705,7 +678,7 @@ export default function FilteringPage() {
             <div className="flex flex-col sm:flex-row gap-4 w-full">
               <button
                 onClick={handleApply}
-                disabled={isApplying}
+                disabled={isApplying || state.status !== "success"}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl
                   border border-indigo-500/30 bg-gradient-to-r from-indigo-600/20 to-violet-600/20
                   px-4 py-4 text-[15px] font-bold text-indigo-100
@@ -722,74 +695,19 @@ export default function FilteringPage() {
       </div>
 
       {/* ── SIGNAL RESULT ── */}
-      <div className="mt-8 flex flex-col gap-8 border-t border-white/5 pt-12">
-
-        {/* 1. WAVEFORM COMPARISON — pre-filter fallback shows original only */}
-        {state.waveform && (
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">
-                {filteredWaveform ? "Waveform Comparison" : "Original Waveform"}
-              </h2>
-            </div>
-
-            <div className="rounded-3xl border border-white/[0.08] bg-[#161625] p-4 shadow-sm overflow-hidden">
-              <WaveformComparison
-                original={state.waveform}
-                filtered={filteredWaveform}
-                currentTime={activePlayer === "filtered" ? filteredTime : originalTime}
-                onSeek={(time) => {
-                  setOriginalSeekTarget(time);
-                  setFilteredSeekTarget(time);
-                }}
-              />
-            </div>
-
-            {/* Compact audio players — below the waveform comparison */}
-            <div className="flex flex-col gap-3">
-              {state.objectUrl && (
-                <div className="flex flex-col gap-1">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 pl-1">Original</p>
-                  <AudioPlayer
-                    ref={originalAudioRef}
-                    src={state.objectUrl}
-                    duration={state.metadata.duration_seconds}
-                    onTimeUpdate={setOriginalTime}
-                    seekTarget={originalSeekTarget}
-                    onPlay={handlePlayOriginal}
-                  />
-                </div>
-              )}
-              {processedUrl && filteredWaveform && (
-                <div className="flex flex-col gap-1">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-500 pl-1">Filtered</p>
-                  <AudioPlayer
-                    ref={filteredAudioRef}
-                    src={processedUrl}
-                    duration={state.metadata.duration_seconds}
-                    onTimeUpdate={setFilteredTime}
-                    seekTarget={filteredSeekTarget}
-                    onPlay={handlePlayFiltered}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 2. FREQUENCY SPECTRUM COMPARISON — replaces two separate spectrum cards */}
-        {state.spectrum && (
-          <div className="flex flex-col gap-4">
-            <h2 className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">
-              {filteredSpectrum ? "Frequency Spectrum Comparison" : "Original Audio Spectrum"}
-            </h2>
-            <div className="rounded-3xl border border-white/[0.08] bg-[#161625] p-4 shadow-sm overflow-hidden">
-              <SpectrumComparison original={state.spectrum} filtered={filteredSpectrum || null} />
-            </div>
-          </div>
-        )}
-
-      </div>
+      {state.status === "success" && state.waveform && (
+        <SignalComparison
+          originalWaveform={state.waveform}
+          processedWaveform={filteredWaveform}
+          originalSpectrum={state.spectrum!}
+          processedSpectrum={filteredSpectrum}
+          originalAudioUrl={state.objectUrl!}
+          processedAudioUrl={processedUrl}
+          originalDuration={state.metadata.duration_seconds}
+          processedDuration={state.metadata.duration_seconds}
+          processedLabel="Filtered"
+        />
+      )}
     </div>
   );
 }

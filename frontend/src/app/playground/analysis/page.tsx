@@ -5,18 +5,8 @@ import { Waves, Loader2 } from "lucide-react";
 import { usePlayground } from "@/contexts/playground-context";
 import { WaveformViewer } from "@/components/audio/waveform-viewer";
 import { AudioPlayer } from "@/components/audio/audio-player";
-import { SpectrumViewer } from "@/components/audio/spectrum-viewer";
-import { SpectrogramViewer } from "@/components/audio/spectrogram-viewer";
-
-const WINDOW_OPTIONS = [
-  { value: "rectangular", label: "Rectangular" },
-  { value: "hamming", label: "Hamming" },
-  { value: "hann", label: "Hann" },
-  { value: "blackman", label: "Blackman" },
-  { value: "kaiser", label: "Kaiser" },
-  { value: "bartlett", label: "Bartlett" },
-  { value: "welch", label: "Welch" },
-];
+import { SpectrumComparison } from "@/components/audio/spectrum-comparison";
+import { AdvancedSpectrogramViewer } from "@/components/audio/advanced-spectrogram-viewer";
 
 function MetaBadge({
   label,
@@ -41,27 +31,29 @@ function MetaBadge({
 }
 
 export default function AnalysisPage() {
-  const { state, updateSpectrogramWindow } = usePlayground();
+  const { state } = usePlayground();
   
   const [currentTime, setCurrentTime] = useState(0);
   const [seekTarget, setSeekTarget] = useState<number | undefined>(undefined);
-  const [isSpectrogramLoading, setIsSpectrogramLoading] = useState(false);
-  
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   if (state.status !== "success") {
-    return null; // Handled by layout
+    return (
+      <div className="min-h-[80vh] flex flex-col items-center justify-center gap-6 text-center">
+        <div className="relative">
+          <div className="absolute inset-0 rounded-full bg-indigo-500/20 blur-2xl scale-150" />
+          <div className="relative rounded-full bg-indigo-900/30 border border-indigo-500/20 p-6">
+            <Waves className="h-12 w-12 text-indigo-400" />
+          </div>
+        </div>
+        <div>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Audio Analysis</h1>
+          <p className="text-slate-400 mt-2 text-sm max-w-md mx-auto">
+            Inspect waveforms, analyze frequency content, and view spectrograms.
+          </p>
+          <p className="text-slate-500 mt-4 text-xs">Upload a WAV file from the sidebar to begin.</p>
+        </div>
+      </div>
+    );
   }
 
   const { metadata, waveform, spectrum, spectrogram, objectUrl, spectrogramWindow } = state;
@@ -159,83 +151,12 @@ export default function AnalysisPage() {
                 {spectrum.n_display_bins} bins
               </span>
             </div>
-            <SpectrumViewer spectrum={spectrum} />
+            <SpectrumComparison original={spectrum} filtered={null} />
           </div>
         )}
 
-        {/* Spectrogram / STFT */}
         {spectrogram && (
-          <div className="rounded-2xl border border-white/[0.08] bg-[#161625] p-6 shadow-sm relative">
-            <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h4 className="font-mono text-xs uppercase tracking-widest text-slate-400">
-                  Spectrogram
-                </h4>
-                <p className="mt-0.5 font-mono text-[10px] text-slate-500">
-                  STFT · {spectrogram.window} window · L = {spectrogram.frame_length} · H = {spectrogram.hop_length} &nbsp;·&nbsp;
-                  Δf = {spectrogram.frequency_resolution_hz.toFixed(1)} Hz · Δt = {(spectrogram.time_resolution_seconds * 1000).toFixed(1)} ms
-                </p>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    type="button"
-                    onClick={() => !isSpectrogramLoading && setIsDropdownOpen(!isDropdownOpen)}
-                    disabled={isSpectrogramLoading}
-                    className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 rounded-full px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:bg-indigo-500/20 disabled:opacity-50 transition-colors"
-                  >
-                    Window = {WINDOW_OPTIONS.find((o) => o.value === spectrogramWindow)?.label || "Hann"}
-                    <svg className="h-3 w-3 fill-current text-indigo-400" viewBox="0 0 20 20">
-                      <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" fillRule="evenodd" />
-                    </svg>
-                  </button>
-                  {isDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-40 origin-top-right rounded-xl border border-white/10 bg-[#0a0a14]/90 backdrop-blur-xl shadow-2xl shadow-black ring-1 ring-black ring-opacity-5 focus:outline-none z-50 overflow-hidden">
-                      <div className="py-1">
-                        {WINDOW_OPTIONS.map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            className={[
-                              "block w-full text-left px-4 py-2 text-xs font-mono tracking-wide transition-colors",
-                              option.value === spectrogramWindow
-                                ? "bg-indigo-500/20 text-indigo-300"
-                                : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            ].join(" ")}
-                            onClick={async () => {
-                              setIsDropdownOpen(false);
-                              setIsSpectrogramLoading(true);
-                              try {
-                                await updateSpectrogramWindow(option.value);
-                              } finally {
-                                setIsSpectrogramLoading(false);
-                              }
-                            }}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <span className="font-mono text-[10px] uppercase tracking-wider text-indigo-400 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 shrink-0">
-                  {spectrogram.n_time_display}×{spectrogram.n_freq_display}
-                </span>
-              </div>
-            </div>
-            
-            <div className={isSpectrogramLoading ? "opacity-50 transition-opacity" : "transition-opacity"}>
-              <SpectrogramViewer spectrogram={spectrogram} />
-            </div>
-            {isSpectrogramLoading && (
-              <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-                <Loader2 className="h-8 w-8 text-indigo-400 animate-spin" />
-              </div>
-            )}
-          </div>
+          <AdvancedSpectrogramViewer spectrogram={spectrogram} />
         )}
       </div>
 

@@ -21,7 +21,7 @@
  * using the same panel layout as WaveformViewer and SpectrumViewer.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import type { SpectrogramData } from "@/lib/api";
 import { DB_MIN, DB_MAX, getRgbForT, dbToT } from "@/lib/colors";
 
@@ -194,7 +194,7 @@ interface SpectrogramViewerProps {
 export function SpectrogramViewer({ spectrogram }: SpectrogramViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
+  const redraw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -202,7 +202,8 @@ export function SpectrogramViewer({ spectrogram }: SpectrogramViewerProps) {
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const cssWidth = canvas.offsetWidth;
+    // use clientWidth which handles CSS width constraints properly
+    const cssWidth = canvas.clientWidth || canvas.offsetWidth;
     const nChannels = spectrogram.channels.length;
     const channelGap = 12;
     const cssHeight =
@@ -211,16 +212,20 @@ export function SpectrogramViewer({ spectrogram }: SpectrogramViewerProps) {
       (nChannels - 1) * channelGap +
       PADDING.bottom;
 
-    // Physical canvas size
-    canvas.width = cssWidth * dpr;
-    canvas.height = cssHeight * dpr;
-    canvas.style.height = `${cssHeight}px`;
+    // Only update canvas dimensions if they've changed (accounting for dpr)
+    if (canvas.width !== Math.round(cssWidth * dpr) || canvas.height !== Math.round(cssHeight * dpr)) {
+      canvas.width = Math.round(cssWidth * dpr);
+      canvas.height = Math.round(cssHeight * dpr);
+      canvas.style.height = `${cssHeight}px`;
+    }
 
+    // Reset transform before clearing
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
 
     const plotLeft = PADDING.left;
-    const plotWidth = cssWidth - PADDING.left - PADDING.right;
+    const plotWidth = Math.max(1, cssWidth - PADDING.left - PADDING.right);
 
     const channelLabels =
       nChannels === 1 ? ["CH"] : ["CH_L", "CH_R", "CH_3", "CH_4"];
@@ -244,6 +249,22 @@ export function SpectrogramViewer({ spectrogram }: SpectrogramViewerProps) {
 
     drawTimeAxis(ctx, durationS, cssHeight, plotLeft, plotWidth);
   }, [spectrogram]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const observer = new ResizeObserver(() => {
+      redraw();
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [redraw]);
+
+  // Initial draw
+  useEffect(() => {
+    redraw();
+  }, [redraw]);
 
   return (
     <canvas

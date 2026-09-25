@@ -324,30 +324,54 @@ Module 07 is fully verified. The backend suite has 486 total passing tests with 
 
 ### Module 08 --- Voice Activity Detection (VAD)
 
-Document VAD as a progressively advanced module:
+**Status:** Final integration validation.
 
-1. **Short-Time Energy:** $E_m = \sum x_m[n]^2$. Basic speech/non-speech indicator. Weaknesses: background noise has high energy, quiet speech missed, threshold depends on recording conditions.
-2. **Zero-Crossing Rate (ZCR):** Complementary feature. Helps distinguish certain signal characteristics but is not sufficient by itself.
-3. **Spectral Features:** Derive spectral energy, spectral centroid, spectral flux, spectral entropy, and band-energy ratios from the STFT infrastructure. Combine multiple features rather than relying on one arbitrary threshold.
-4. **Likelihood / Statistical Classification:** Investigate likelihood-ratio testing.
-5. **GMM / Statistical Modeling:** Gaussian/GMM-based speech-vs-noise modeling to calculate the probability a frame is speech.
-6. **HMM / Temporal Modeling:** Hidden Markov Models.
-7. **Temporal Smoothing / State Modeling:** Introduce hysteresis, hangover time, minimum speech duration, and minimum silence duration to prevent rapid flipping between speech and silence.
-8. **Comparison with WebRTC VAD:** Benchmark against established implementations like WebRTC VAD.
-9. **Optional Comparison against Silero VAD:** If dependency/privacy constraints allow, benchmark against modern neural VAD.
+Module 08 implements real-time Voice Activity Detection (VAD) using a common backend session architecture that integrates two external engines:
+1. **Silero** (Neural VAD)
+2. **TEN VAD** (WebRTC-derived classical/hybrid VAD)
 
-The educational goal is to compare hand-built classical DSP VAD vs statistical VAD vs modern neural VAD. Do not implement these now.
+**Current Architecture:**
+```text
+                    AUDIO SOURCE
+                 /              \
+          Microphone          Shared Audio
+                 \              /
+                  \            /
+                   VAD Session (WebSocket)
+                       |
+              Selected VAD Engine
+                 /          \
+             Silero        TEN VAD
+                       |
+                   VAD Result
+                       |
+                    Frontend
+```
+
+**Important Architectural Decision (State Separation):**
+The architecture strictly separates Audio/Source State from VAD State:
+- **Audio/Source State:** Selected source, uploaded audio file, playback position, play/pause state.
+- **VAD State:** Selected engine, WebSocket connection, VadSession, engine result, VAD history.
+
+Changing the VAD engine must only alter the VAD session. It must NOT reload the page, destroy the audio source, reset the shared audio back to the microphone, or lose playback position.
+
+**Engineering Contribution:**
+While Silero and TEN VAD provide the underlying algorithms, Rigel's engineering contribution includes the common engine interface, session management, source adaptation (Float32 PCM chunking), WebSocket transport, sample-rate adaptation, backend-confirmed engine identity, and robust frontend state management without full-page reloads.
 
 ------------------------------------------------------------------------
 
 ## Phase 3 --- Voice Manipulation
 
-### Module 09 --- Voice Tweaks
+### Module 09 --- Voice Laboratory (COMPLETE)
 
-Possible features: - gain - pitch shifting - time stretching - speed -
-effects - later formant/timbre manipulation
+A classical DSP Transformation Observatory focusing on:
+- Gain / Normalization
+- Speed / Resampling
+- Phase Vocoder Time Stretch
+- Pitch Shift
+- Curated Classical Effects (Tremolo, Ring Modulation, Delay, Chorus, Soft Distortion, Timbre/Spectral Tilt, Schroeder Reverb)
 
-Start with classical DSP methods.
+Core architectural principle: All processing forms a reproducible chain starting from the original audio. Parameters invalidate and recalculate the chain rather than compounding numerically. Use a single orchestration endpoint `POST /api/audio/voice/process` with strongly typed operations. Output strictly guarantees numerical safety (clipping/normalization).
 
 ### Module 10 --- Adaptive Noise Cancellation
 

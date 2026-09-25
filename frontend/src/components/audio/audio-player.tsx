@@ -9,12 +9,15 @@ interface AudioPlayerProps {
   onTimeUpdate?: (currentTime: number) => void;
   onEnded?: () => void;
   onPlay?: () => void;
+  onPause?: () => void;
+  onSeek?: (time: number) => void;
   seekTarget?: number;
 }
 
 export interface AudioPlayerRef {
   pause: () => void;
   reset: () => void;
+  getCurrentTime: () => number;
 }
 
 function formatTime(seconds: number): string {
@@ -30,6 +33,8 @@ export const AudioPlayer = forwardRef<AudioPlayerRef, AudioPlayerProps>(({
   onTimeUpdate,
   onEnded,
   onPlay,
+  onPause,
+  onSeek,
   seekTarget,
 }, ref) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -49,8 +54,10 @@ export const AudioPlayer = forwardRef<AudioPlayerRef, AudioPlayerProps>(({
   const handleEnded = useCallback(() => {
     setIsPlaying(false);
     setCurrentTime(0);
+    if (audioRef.current) audioRef.current.currentTime = 0;
+    onSeek?.(0);
     onEnded?.();
-  }, [onEnded]);
+  }, [onEnded, onSeek]);
 
   const handleCanPlay = useCallback(() => {
     setIsReady(true);
@@ -61,6 +68,7 @@ export const AudioPlayer = forwardRef<AudioPlayerRef, AudioPlayerProps>(({
       if (audioRef.current && !audioRef.current.paused) {
         audioRef.current.pause();
         setIsPlaying(false);
+        onPause?.();
       }
     },
     reset: () => {
@@ -70,7 +78,11 @@ export const AudioPlayer = forwardRef<AudioPlayerRef, AudioPlayerProps>(({
         setIsPlaying(false);
         setCurrentTime(0);
         onTimeUpdate?.(0);
+        onPause?.();
       }
+    },
+    getCurrentTime: () => {
+      return audioRef.current ? audioRef.current.currentTime : 0;
     }
   }));
 
@@ -83,6 +95,7 @@ export const AudioPlayer = forwardRef<AudioPlayerRef, AudioPlayerProps>(({
     audio.currentTime = seekTarget;
     setCurrentTime(seekTarget);
     onTimeUpdate?.(seekTarget);
+    onSeek?.(seekTarget);
   }, [seekTarget, onTimeUpdate]);
 
   async function togglePlay() {
@@ -92,6 +105,7 @@ export const AudioPlayer = forwardRef<AudioPlayerRef, AudioPlayerProps>(({
     if (isPlaying) {
       audio.pause();
       setIsPlaying(false);
+      onPause?.();
     } else {
       try {
         await audio.play();
@@ -117,6 +131,7 @@ export const AudioPlayer = forwardRef<AudioPlayerRef, AudioPlayerProps>(({
     audio.currentTime = t;
     setCurrentTime(t);
     onTimeUpdate?.(t);
+    onSeek?.(t);
   }
 
   const progress = duration > 0 ? currentTime / duration : 0;

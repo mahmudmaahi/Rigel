@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { usePlayground, PlaygroundProvider } from "@/contexts/playground-context";
 import { AuroraBackground } from "@/components/visual/aurora-background";
-import { FileAudio, Loader2, Music, SlidersHorizontal, Activity, Waves, Download, Menu, ChevronLeft, ChevronRight } from "lucide-react";
+import { SidebarAudioRecorder } from "@/components/audio/sidebar-audio-recorder";
+import { FileAudio, Loader2, Music, SlidersHorizontal, Activity, Waves, Download, Menu, ChevronLeft, ChevronRight, Mic } from "lucide-react";
 import { AudioUploader } from "@/components/audio/audio-uploader";
 import { useState } from "react";
 
@@ -21,12 +22,13 @@ const PLAYGROUND_NAV = [
   { name: "Audio Analysis", path: "/playground/analysis", icon: Waves, enabled: true },
   { name: "Filtering", path: "/playground/filtering", icon: SlidersHorizontal, enabled: true },
   { name: "Noise Removal", path: "/playground/enhancement", icon: Music, enabled: true },
-  { name: "Speech / VAD", path: "/playground/speech", icon: Activity, enabled: false },
+  { name: "Voice Activity Detection", path: "/playground/speech", icon: Activity, enabled: true },
+  { name: "Voice Lab", path: "/playground/voice-lab", icon: Mic, enabled: true },
 ];
 
 function PlaygroundSidebar() {
   const pathname = usePathname();
-  const { state, clearAudio } = usePlayground();
+  const { state, uploadFile } = usePlayground();
 
   return (
     <div className="flex h-full w-full flex-col border-r border-white/5 bg-[#080811]/50 backdrop-blur-xl lg:w-72">
@@ -71,12 +73,24 @@ function PlaygroundSidebar() {
                 {state.metadata.duration_seconds.toFixed(2)}s
               </span>
             </div>
-            <button
-              onClick={clearAudio}
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
-            >
-              Change File ↺
-            </button>
+            <div className="flex flex-col gap-2 mt-2">
+              <button
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = "audio/*";
+                  input.onchange = (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) uploadFile(file);
+                  };
+                  input.click();
+                }}
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center justify-center gap-2"
+              >
+                <FileAudio className="w-3.5 h-3.5" /> Change File
+              </button>
+              <SidebarAudioRecorder onRecordingComplete={(f) => uploadFile(f)} />
+            </div>
           </div>
         ) : state.status === "loading" ? (
           <div className="rounded-2xl border border-white/5 bg-white/5 p-6 flex flex-col items-center justify-center text-center">
@@ -85,7 +99,25 @@ function PlaygroundSidebar() {
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-center">
-            <p className="text-xs text-slate-400 mb-2">No audio loaded</p>
+            <p className="text-xs text-slate-400 mb-3">No audio loaded</p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = "audio/*";
+                  input.onchange = (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) uploadFile(file);
+                  };
+                  input.click();
+                }}
+                className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-xs font-medium text-white transition-colors shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
+              >
+                <FileAudio className="w-3.5 h-3.5" /> Upload WAV
+              </button>
+              <SidebarAudioRecorder onRecordingComplete={(f) => uploadFile(f)} />
+            </div>
           </div>
         )}
       </div>
@@ -105,7 +137,7 @@ function PlaygroundSidebar() {
                 className={[
                   "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-indigo-500/10 text-indigo-300"
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                     : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
                 ].join(" ")}
               >
@@ -161,8 +193,9 @@ function PlaygroundSidebar() {
 }
 
 function PlaygroundShell({ children }: { children: React.ReactNode }) {
-  const { state } = usePlayground();
+  const { state, uploadFile } = usePlayground();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const pathname = usePathname();
 
   return (
     <div className="relative flex h-screen w-full overflow-hidden bg-[#080811] text-white">
@@ -189,13 +222,7 @@ function PlaygroundShell({ children }: { children: React.ReactNode }) {
         </div>
         <div className="p-5 pt-2 sm:p-8 sm:pt-4 lg:p-12 lg:pt-6">
           <div className="mx-auto max-w-[100rem]">
-            {state.status === "idle" || state.status === "loading" || state.status === "error" ? (
-              <div className="mt-10 lg:mt-20 max-w-5xl mx-auto">
-                <AudioUploader />
-              </div>
-            ) : (
-              children
-            )}
+            {children}
           </div>
         </div>
       </main>
