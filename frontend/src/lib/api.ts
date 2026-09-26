@@ -605,3 +605,43 @@ export function encodeSamplesToWavBlob(samples: number[][], sampleRate: number):
   }
   return new Blob([buf], { type: "audio/wav" });
 }
+
+// ---------------------------------------------------------------------------
+// Image Export types (Audio <-> Image Steganography)
+// ---------------------------------------------------------------------------
+
+export async function encodeAudioToImage(file: File | Blob): Promise<{ blob: Blob, headers: Headers }> {
+  const formData = new FormData();
+  formData.append("file", file, file instanceof File ? file.name : "audio.wav");
+
+  const response = await fetch(`${API_BASE_URL}/api/audio/image/encode`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Audio image encoding failed with status ${response.status}`);
+  }
+  
+  const blob = await response.blob();
+  return { blob, headers: response.headers };
+}
+
+export async function decodeImageToAudio(file: File | Blob): Promise<{ blob: Blob, headers: Headers }> {
+  const formData = new FormData();
+  formData.append("file", file, file instanceof File ? file.name : "image.png");
+
+  const response = await fetch(`${API_BASE_URL}/api/audio/image/decode`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Image decoding failed with status ${response.status}`);
+  }
+  
+  const blob = await response.blob();
+  return { blob, headers: response.headers };
+}

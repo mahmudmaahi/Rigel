@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, UploadFile, Form
+from fastapi import APIRouter, File, UploadFile, Form, Response, HTTPException
 
 from app.models.audio import (
     AudioAnalyzeResponse,
@@ -86,6 +86,88 @@ async def spectrogram_audio(
 async def export_audio(request: AudioExportRequest):
     """Generic endpoint to export processed floating-point samples to a downloadable WAV file."""
     return export_samples_to_wav(request.samples, request.sample_rate_hz)
+
+@router.post("/audio/image/encode", tags=["audio", "image"])
+async def encode_audio_image(file: UploadFile = File(...)):
+    """Encode an uploaded WAV audio file into a Rigel Data Image (PNG)."""
+    from app.services.audio_service import _read_and_validate_upload
+    from app.services.audio_image_service import encode_audio_to_image
+    from dsp_core.audio_loader import load_audio_bytes, AudioDecodeError
+    import numpy as np
+
+    try:
+        file_bytes, filename, _ = await _read_and_validate_upload(file)
+        loaded = load_audio_bytes(file_bytes, filename)
+    except AudioDecodeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Internal trace error 1: " + str(e))
+        
+    if loaded.samples.dtype != np.int16:
+        # If float, we could scale, but the spec says: "Do NOT silently convert arbitrary float WAVs... if that would violate exact sample recovery. Reject unsupported WAV formats cleanly."
+        # However, scipy wavfile.read will return int16 if the original file is 16-bit PCM.
+        # But `_infer_bit_depth` returns 16 if int16.
+        if loaded.bit_depth != 16 or loaded.samples.dtype != np.int16:
+            raise HTTPException(
+                status_code=400, 
+                detail="Only 16-bit PCM WAV files are supported for exact sample encoding."
+            )
+
+    try:
+        res = encode_audio_to_image(loaded.samples, loaded.sample_rate_hz)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return Response(
+        content=res.png_bytes,
+        media_type="image/png",
+        headers={
+            "X-Rigel-Image-Dim": str(res.image_dim),
+            "X-Rigel-Payload-Bytes": str(res.payload_bytes_len),
+            "X-Rigel-PCM-Bytes": str(res.original_pcm_bytes),
+            "X-Rigel-FLAC-Bytes": str(res.flac_bytes_len),
+            "X-Rigel-Compression-Ratio": f"{res.compression_ratio:.4f}"
+        }
+    )
+
+@router.post("/audio/image/decode", tags=["audio", "image"])
+async def decode_audio_image(file: UploadFile = File(...)):
+    """Decode a Rigel Data Image (PNG) back into a WAV audio file."""
+    from app.services.audio_image_service import decode_image_to_audio
+    from dsp_core.audio_codec import AudioCodecError
+    from dsp_core.payload_protocol import ProtocolError
+    from dsp_core.image_codec import ImageCodecError
+    from app.services.export_service import export_samples_to_wav
+    
+    file_bytes = await file.read()
+    
+    try:
+        res = decode_image_to_audio(file_bytes)
+    except (AudioCodecError, ProtocolError, ImageCodecError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
+    import io
+    from scipy.io import wavfile
+    
+    buffer = io.BytesIO()
+    wavfile.write(buffer, res.sample_rate_hz, res.samples)
+    wav_bytes = buffer.getvalue()
+    
+    return Response(
+        content=wav_bytes,
+        media_type="audio/wav",
+        headers={
+            "X-Rigel-Protocol": "RGL1",
+            "X-Rigel-Image-Dim": str(res.image_dim),
+            "X-Rigel-Payload-Bytes": str(res.payload_bytes_len),
+            "X-Rigel-Sample-Rate": str(res.sample_rate_hz),
+            "X-Rigel-Channels": str(1 if res.samples.ndim == 1 else res.samples.shape[1]),
+            "X-Rigel-Sample-Count": str(len(res.samples))
+        }
+    )
+
 
 
 @router.post("/audio/filter", tags=["audio", "filtering"])

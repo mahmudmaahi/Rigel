@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { usePlayground, PlaygroundProvider } from "@/contexts/playground-context";
 import { AuroraBackground } from "@/components/visual/aurora-background";
 import { SidebarAudioRecorder } from "@/components/audio/sidebar-audio-recorder";
-import { FileAudio, Loader2, Music, SlidersHorizontal, Activity, Waves, Download, Menu, ChevronLeft, ChevronRight, Mic } from "lucide-react";
+import { FileAudio, Loader2, Music, SlidersHorizontal, Activity, Waves, Download, Menu, ChevronLeft, ChevronRight, Mic, Image as ImageIcon } from "lucide-react";
 import { AudioUploader } from "@/components/audio/audio-uploader";
 import { useState } from "react";
 
@@ -24,6 +24,7 @@ const PLAYGROUND_NAV = [
   { name: "Noise Removal", path: "/playground/enhancement", icon: Music, enabled: true },
   { name: "Voice Activity Detection", path: "/playground/speech", icon: Activity, enabled: true },
   { name: "Voice Lab", path: "/playground/voice-lab", icon: Mic, enabled: true },
+  { name: "Audio Image", path: "/playground/image", icon: ImageIcon, enabled: true },
 ];
 
 function PlaygroundSidebar() {
@@ -127,7 +128,7 @@ function PlaygroundSidebar() {
         <h3 className="mb-3 px-2 text-xs font-bold tracking-widest text-slate-500 uppercase">Workspaces</h3>
         <nav className="flex flex-col gap-1">
           {PLAYGROUND_NAV.map((item) => {
-            const isActive = pathname === item.path;
+            const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
             const Icon = item.icon;
             
             return item.enabled ? (
