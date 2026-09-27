@@ -138,7 +138,7 @@ export default function EnhancementPage() {
   const [alpha, setAlpha] = useState(1.0);
   const [beta, setBeta] = useState(0.01);
   const [alphaDd, setAlphaDd] = useState(0.98);
-  const [gMin, setGMin] = useState(0.01);
+  const [gMin, setGMin] = useState(0.05);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -165,7 +165,7 @@ export default function EnhancementPage() {
       setAlphaDd(0.98);
     } else if (newMethod === "imcra") {
       setAlphaDd(0.98);
-      setGMin(0.01);
+      setGMin(0.05);
     }
   };
 

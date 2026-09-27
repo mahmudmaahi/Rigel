@@ -73,10 +73,9 @@ export function Navbar() {
         </Link>
 
         {/* Center: Nav Links */}
-        <div className="hidden items-center justify-center gap-2 md:flex p-1 rounded-full bg-white/5 border border-white/10" style={{ fontFamily: "'Century Gothic', sans-serif" }}>
+        <div className="hidden items-center justify-center gap-2 md:flex p-1 rounded-full bg-white/5 border border-white/10">
           {[
             { name: "Home", href: "/" },
-            { name: "Desktop", href: "/#workspace" },
             { name: "Docs", href: "/#docs" }
           ].map((tab) => {
             const isActive = tab.name === "Home" ? pathname === "/" : tab.name === "Docs" ? pathname === "/docs" : false;
@@ -111,24 +110,14 @@ export function Navbar() {
           })}
         </div>
 
-        {/* Right: Login/Download */}
-        <div className="hidden flex-1 items-center justify-end gap-6 text-lg font-medium text-slate-300 md:flex" style={{ fontFamily: "'Century Gothic', sans-serif" }}>
-          <button className="transition-colors hover:text-white">Login</button>
-          <button 
+        {/* Right: Enter the app */}
+        <div className="hidden flex-1 items-center justify-end md:flex">
+          <Link
+            href="/playground/analysis"
             className="group animate relative flex cursor-pointer items-center justify-center text-white bg-slate-600/80 border border-slate-500 h-10 px-6 hover:border-slate-500 hover:bg-slate-300/50 rounded-full overflow-hidden transition-colors"
           >
-            <div
-              className="before:absolute before:inset-[0] before:h-full before:w-full before:rounded-full before:p-[1px] before:will-change-[background-position] before:content-[''] before:![-webkit-mask-composite:xor] before:[background-image:var(--background-radial-gradient)] before:[background-size:300%_300%] before:![mask-composite:exclude] before:[mask:var(--mask-linear-gradient)] motion-safe:before:animate-[shine-pulse_var(--shine-pulse-duration)_infinite_linear]"
-              style={{
-                "--shine-pulse-duration": "14s",
-                "--mask-linear-gradient": "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-                "--background-radial-gradient": "radial-gradient(transparent,transparent, #A07CFE,#FE8FB5,#FFBE7B,transparent,transparent)",
-              } as React.CSSProperties}
-            ></div>
-            <span className="relative z-[1] flex items-center justify-center gap-2 text-base font-semibold tracking-wide text-white">
-              Download
-            </span>
-          </button>
+            Launch Playground
+          </Link>
         </div>
       </nav>
     </div>

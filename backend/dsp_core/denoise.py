@@ -1089,10 +1089,17 @@ def denoise_spectral_subtraction(
 # Phase 5 — Log-MMSE Speech Enhancement
 # ---------------------------------------------------------------------------
 
+# Matches Spectral Subtraction's own default floor (sqrt(SS_DEFAULT_BETA) = 0.1).
+# See denoise_logmmse's / denoise_wiener_dd's docstrings for why a floor is
+# needed in practice.
+LOGMMSE_DEFAULT_GMIN: float = 0.1
+
+
 def apply_logmmse_filter(
     stft: np.ndarray,
     noise_psd: np.ndarray,
     alpha_dd: float = 0.98,
+    g_min: float = 0.0,
 ) -> np.ndarray:
     """Apply the Log-MMSE (Ephraim & Malah 1985) estimator to a noisy STFT.
 
@@ -1104,6 +1111,10 @@ def apply_logmmse_filter(
         Real 2-D array (n_frames, n_freq) of the estimated noise power spectrum.
     alpha_dd:
         Decision-Directed smoothing parameter in [0, 1].
+    g_min:
+        Minimum gain floor in [0, 1]. Default 0.0 (no floor — matches the
+        original formulation). The pipeline entry point `denoise_logmmse`
+        uses a nonzero default in practice; see its docstring for why.
 
     Returns
     -------
@@ -1213,24 +1224,42 @@ def apply_logmmse_filter(
         xi[0] = np.maximum(gamma[0] - 1.0, 0.0)
         m = 0
         G_0 = compute_gain(xi[0], gamma[0], stft[0])
-        
+        # Frequency-domain gain smoothing (same 3-bin uniform kernel used by
+        # Spectral Subtraction) — suppresses isolated per-bin gain spikes
+        # (e.g. from a frame whose window straddles a noise/speech boundary)
+        # that would otherwise reconstruct as a narrowband, noise-phase
+        # "musical noise" artifact. See apply_wiener_filter_dd for the full note.
+        G_0 = uniform_filter1d(G_0, size=_FREQ_SMOOTH_BINS, mode="nearest")
+        if g_min > 0.0:
+            G_0 = np.maximum(G_0, g_min)
+
         # Explicit bypass for |X|=0: where |X|=0, enhanced_stft is exactly 0 (already allocated).
         # We only apply gain where X != 0 to strictly avoid NaN propagation.
         valid_0 = (P_noisy[0] > 0)
         enhanced_stft[0, valid_0] = G_0[valid_0] * stft[0, valid_0]
-        
+
         # Frame 1..N
         for m in range(1, n_frames):
             P_enh_prev = np.abs(enhanced_stft[m - 1]) ** 2
-            
+
             # xi(m,k) DD update
             term1 = alpha_dd * (P_enh_prev / P_noise_safe[m])
             term2 = (1.0 - alpha_dd) * np.maximum(gamma[m] - 1.0, 0.0)
-            
+
             xi[m] = np.maximum(term1 + term2, 0.0)
-            
+
             G_m = compute_gain(xi[m], gamma[m], stft[m])
-            
+            G_m = uniform_filter1d(G_m, size=_FREQ_SMOOTH_BINS, mode="nearest")
+
+            # Gain floor (g_min, off by default) — see
+            # apply_wiener_filter_dd's docstring for the full rationale:
+            # bounds how far gain can drop during noise-only frames, which
+            # shrinks the noise-to-speech gain swing at a boundary frame and
+            # so reduces the audible "pre-echo" smear from overlap-add,
+            # without slowing the response to genuine, sustained speech.
+            if g_min > 0.0:
+                G_m = np.maximum(G_m, g_min)
+
             valid_m = (P_noisy[m] > 0)
             enhanced_stft[m, valid_m] = G_m[valid_m] * stft[m, valid_m]
             
@@ -1246,11 +1275,17 @@ def denoise_logmmse(
     noise_alpha_s: float = MS_DEFAULT_ALPHA_S,
     noise_window_frames: int | None = None,
     noise_bias: float = MS_DEFAULT_BIAS,
+    g_min: float = LOGMMSE_DEFAULT_GMIN,
 ) -> np.ndarray:
     """Denoise an audio signal using Log-MMSE Speech Enhancement.
 
     This function routes mono or stereo signals through STFT, Phase 2 Minimum Statistics
     noise tracking, Log-MMSE filtering, and ISTFT reconstruction.
+
+    g_min:
+        Minimum gain floor in [0, 1]. Defaults to `LOGMMSE_DEFAULT_GMIN`
+        (unlike `apply_logmmse_filter`'s own default of 0.0) for the same
+        reason as `denoise_wiener_dd` — see its docstring.
     """
     if hop_length is None:
         hop_length = frame_length // 4
@@ -1286,7 +1321,7 @@ def denoise_logmmse(
         )
         
         # 3. Log-MMSE filter
-        S_enh = apply_logmmse_filter(S, P_noise, alpha_dd=alpha_dd)
+        S_enh = apply_logmmse_filter(S, P_noise, alpha_dd=alpha_dd, g_min=g_min)
         
         # 4. ISTFT
         y = istft_process(
@@ -1305,10 +1340,16 @@ def denoise_logmmse(
 # Phase 4 — Decision-Directed Wiener Filtering
 # ---------------------------------------------------------------------------
 
+# Matches Spectral Subtraction's own default floor (sqrt(SS_DEFAULT_BETA) = 0.1).
+# See denoise_wiener_dd's docstring for why a floor is needed in practice.
+WIENER_DEFAULT_GMIN: float = 0.1
+
+
 def apply_wiener_filter_dd(
     stft: np.ndarray,
     noise_psd: np.ndarray,
     alpha_dd: float = 0.98,
+    g_min: float = 0.0,
 ) -> np.ndarray:
     """Apply a Decision-Directed Wiener filter to a noisy STFT.
 
@@ -1322,6 +1363,12 @@ def apply_wiener_filter_dd(
         Decision-Directed smoothing parameter in [0, 1].
         Typically 0.98. Controls the weighting of the a-priori SNR estimate
         from the previous enhanced frame vs the current a-posteriori SNR.
+    g_min:
+        Minimum gain floor in [0, 1]. Default 0.0 (no floor — matches the
+        original, purely mathematical Decision-Directed formulation, where
+        gain is bounded in [0, 1] only by construction). The pipeline entry
+        point `denoise_wiener_dd` uses a nonzero default in practice; see its
+        docstring for why.
 
     Returns
     -------
@@ -1364,29 +1411,65 @@ def apply_wiener_filter_dd(
         # xi(0,k) = max(gamma(0,k) - 1, 0)
         xi[0] = np.maximum(gamma[0] - 1.0, 0.0)
         
-        # First frame gain and application
+        # First frame gain and application.
+        #
+        # Frequency-domain gain smoothing (same 3-bin uniform kernel used by
+        # Spectral Subtraction, see apply_spectral_subtraction) is applied here
+        # too: a frame whose analysis window straddles the onset of a new
+        # sound (e.g. the boundary between a noise-only prefix and speech)
+        # can see gamma/xi spike in a handful of isolated bins while the
+        # frame's phase is still overwhelmingly noise-derived. Without
+        # smoothing, that isolated per-bin gain boost is applied to
+        # noise-phase content and reconstructs as a short, narrowband,
+        # incoherent-sounding ("musical noise") artifact. Averaging the gain
+        # over neighbouring bins suppresses isolated spikes while leaving
+        # genuine broadband gain changes (real speech, many bins wide)
+        # essentially unaffected.
         G_0 = xi[0] / (1.0 + xi[0])
+        G_0 = uniform_filter1d(G_0, size=_FREQ_SMOOTH_BINS, mode="nearest")
+        if g_min > 0.0:
+            G_0 = np.maximum(G_0, g_min)
         enhanced_stft[0] = G_0 * stft[0]
-        
+
         # Process remaining frames
         for m in range(1, n_frames):
             # The critical DD recursion using the PREVIOUS ENHANCED power: |Y(m-1, k)|^2
             # Explicitly implemented to satisfy the Phase 4 requirement.
             P_enh_prev = np.abs(enhanced_stft[m - 1]) ** 2
-            
+
             # xi(m,k) = alpha_dd * [ |Y(m-1,k)|^2 / P_N(m,k) ] + (1 - alpha_dd) * max(gamma(m,k) - 1, 0)
             term1 = alpha_dd * (P_enh_prev / P_noise_safe[m])
             term2 = (1.0 - alpha_dd) * np.maximum(gamma[m] - 1.0, 0.0)
-            
+
             xi[m] = term1 + term2
-            
+
             # Ensure xi >= 0 (mathematically guaranteed by the max() and absolute value, but safe to clamp)
             xi[m] = np.maximum(xi[m], 0.0)
-            
+
             # Wiener gain: G = xi / (1 + xi)
             # Because xi >= 0, this strictly bounds G in [0, 1]
             G_m = xi[m] / (1.0 + xi[m])
-            
+
+            # Frequency-domain gain smoothing — see note on G_0 above.
+            G_m = uniform_filter1d(G_m, size=_FREQ_SMOOTH_BINS, mode="nearest")
+
+            # Gain floor (g_min, off by default — see apply_wiener_filter_dd's
+            # docstring for the full rationale). Unlike Spectral Subtraction
+            # and OM-LSA, the plain Wiener/DD gain has no floor at all, so it
+            # can swing between ~0 (steady noise) and ~1 (speech) with no
+            # limit on how large that swing is. A frame whose analysis window
+            # straddles a noise/speech boundary legitimately needs a higher
+            # gain once real speech enters it — but that frame's synthesis
+            # window spans both sides of the boundary, so overlap-add smears
+            # part of its reconstruction into samples that are, in real time,
+            # still before the audible onset ("pre-echo", a structural
+            # consequence of applying one gain per analysis frame). Raising
+            # the noise-floor gain shrinks that swing, so the smeared
+            # contribution is far less audible, without slowing the response
+            # to genuine, sustained speech.
+            if g_min > 0.0:
+                G_m = np.maximum(G_m, g_min)
+
             # Apply gain
             enhanced_stft[m] = G_m * stft[m]
         
@@ -1402,11 +1485,24 @@ def denoise_wiener_dd(
     noise_alpha_s: float = MS_DEFAULT_ALPHA_S,
     noise_window_frames: int | None = None,
     noise_bias: float = MS_DEFAULT_BIAS,
+    g_min: float = WIENER_DEFAULT_GMIN,
 ) -> np.ndarray:
     """Denoise an audio signal using Decision-Directed Wiener Filtering.
 
     This function routes mono or stereo signals through STFT, Phase 2 Minimum Statistics
     noise tracking, Decision-Directed Wiener filtering, and ISTFT reconstruction.
+
+    g_min:
+        Minimum gain floor in [0, 1]. Defaults to `WIENER_DEFAULT_GMIN` (unlike
+        `apply_wiener_filter_dd`'s own default of 0.0) because a floor is
+        needed in practice: without one, a frame whose analysis window
+        straddles a noise/speech boundary can legitimately swing from
+        near-zero gain to a much higher gain the instant real speech enters
+        its window, and that swing gets smeared backward in time by
+        overlap-add ("pre-echo"), audible as a brief artifact immediately
+        before the perceived onset. Raising the floor shrinks the swing
+        without slowing the response to genuine, sustained speech, which
+        spans many frames rather than one.
     """
     if hop_length is None:
         hop_length = frame_length // 4
@@ -1442,7 +1538,7 @@ def denoise_wiener_dd(
         )
         
         # 3. Wiener DD
-        S_enh = apply_wiener_filter_dd(S, P_noise, alpha_dd=alpha_dd)
+        S_enh = apply_wiener_filter_dd(S, P_noise, alpha_dd=alpha_dd, g_min=g_min)
         
         # 4. ISTFT
         y = istft_process(
@@ -1672,6 +1768,11 @@ def estimate_noise_imcra(
 # Phase 6B — OM-LSA Gain and Integration
 # ---------------------------------------------------------------------------
 
+# See denoise_omlsa's docstring for why the pipeline entry point raises this
+# above apply_omlsa_filter's own default (0.01).
+OMLSA_DEFAULT_GMIN: float = 0.05
+
+
 def apply_omlsa_filter(
     stft: np.ndarray,
     noise_psd: np.ndarray,
@@ -1720,7 +1821,7 @@ def apply_omlsa_filter(
     
     xi = np.zeros_like(P_noisy, dtype=np.float64)
     enhanced_stft = np.zeros_like(stft, dtype=np.complex128)
-    
+
     from scipy.special import exp1
     EULER_GAMMA = 0.57721566490153286
     V_THRESHOLD = 1e-3
@@ -1789,7 +1890,14 @@ def apply_omlsa_filter(
         G_lmmse_safe = np.maximum(G_lmmse, epsilon)
         log_G_omlsa = p * np.log(G_lmmse_safe) + (1.0 - p) * np.log(G_min)
         G_omlsa = np.exp(log_G_omlsa)
-        
+
+        # Frequency-domain gain smoothing (same 3-bin uniform kernel used by
+        # Spectral Subtraction) — suppresses isolated per-bin gain spikes
+        # (e.g. from a frame whose window straddles a noise/speech boundary)
+        # that would otherwise reconstruct as a narrowband, noise-phase
+        # "musical noise" artifact. See apply_wiener_filter_dd for the full note.
+        G_omlsa = uniform_filter1d(G_omlsa, size=_FREQ_SMOOTH_BINS, mode="nearest")
+
         # 4. Reconstruction and X=0 protection
         Y_m = G_omlsa * stft[m]
         zero_x_mask = (P_noisy[m] == 0.0)
@@ -1806,11 +1914,20 @@ def denoise_omlsa(
     frame_length: int = 2048,
     hop_length: int | None = None,
     alpha_dd: float = 0.98,
-    G_min: float = 0.01,
+    G_min: float = OMLSA_DEFAULT_GMIN,
     imcra_alpha_s: float = 0.86,
     imcra_alpha_d: float = 0.85,
 ) -> np.ndarray:
     """Denoise an audio signal using IMCRA Noise Tracking + OM-LSA Gain.
+
+    G_min:
+        Minimum gain floor in [0, 1] applied when speech is judged absent.
+        Defaults to `OMLSA_DEFAULT_GMIN` (unlike `apply_omlsa_filter`'s own
+        default of 0.01) because a slightly higher floor measurably reduces
+        an audible artifact at noise/speech transitions ("pre-echo" — see
+        `denoise_wiener_dd`'s docstring for the full mechanism) while still
+        leaving OM-LSA's SPP-driven suppression well below Spectral
+        Subtraction's or Wiener's floor during genuine, sustained silence.
     """
     if hop_length is None:
         hop_length = frame_length // 4

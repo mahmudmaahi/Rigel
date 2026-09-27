@@ -514,8 +514,6 @@ export type VoiceGainOperation = { op: "gain"; enabled?: boolean; mode: VoiceGai
 export type VoiceSpeedOperation = { op: "speed"; enabled?: boolean; speed: number };
 export type VoiceTimeStretchOperation = { op: "time_stretch"; enabled?: boolean; stretch: number };
 export type VoicePitchShiftOperation = { op: "pitch_shift"; enabled?: boolean; semitones: number };
-export type VoiceTremoloEffect = { op: "tremolo"; enabled?: boolean; rate_hz: number; depth: number };
-export type VoiceRingModEffect = { op: "ring_modulation"; enabled?: boolean; carrier_hz: number };
 export type VoiceEchoDelayEffect = { op: "echo_delay"; enabled?: boolean; delay_ms: number; feedback: number; mix: number };
 export type VoiceChorusEffect = { op: "chorus"; enabled?: boolean; rate_hz: number; depth_ms: number; base_delay_ms: number; mix: number };
 export type VoiceDistortionEffect = { op: "soft_distortion"; enabled?: boolean; drive: number };
@@ -526,9 +524,7 @@ export type VoiceEffect =
   | VoiceSpeedOperation
   | VoiceTimeStretchOperation
   | VoicePitchShiftOperation
-  | VoiceTremoloEffect 
-  | VoiceRingModEffect 
-  | VoiceEchoDelayEffect 
+  | VoiceEchoDelayEffect
   | VoiceChorusEffect 
   | VoiceDistortionEffect
   | VoiceReverbEffect;
@@ -603,6 +599,14 @@ export type LiveMeasurementFrame = {
   pitch_hz: number;
   pitch_confidence: number;
   voiced: boolean;
+};
+
+/** JSON handshake sent as the first WS message on /api/audio/measure/stream, before any binary PCM frames. */
+export type MeasureStreamStartMessage = {
+  event: "start";
+  sampleRate: number;
+  channels: 1;
+  format: "float32";
 };
 
 export async function measureAudio(samples: number[][], sampleRateHz: number): Promise<MeasurementResponse> {

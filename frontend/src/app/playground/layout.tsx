@@ -24,7 +24,7 @@ const PLAYGROUND_NAV = [
   { name: "Noise Removal", path: "/playground/enhancement", icon: Music, enabled: true },
   { name: "Voice Activity Detection", path: "/playground/speech", icon: Activity, enabled: true },
   { name: "Voice Lab", path: "/playground/voice-lab", icon: Mic, enabled: true },
-  { name: "Audio Image", path: "/playground/image", icon: ImageIcon, enabled: true },
+  { name: "Audio ↔ Image", path: "/playground/image", icon: ImageIcon, enabled: true },
 ];
 
 function PlaygroundSidebar() {

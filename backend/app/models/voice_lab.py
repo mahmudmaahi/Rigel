@@ -81,28 +81,6 @@ class PitchShiftOperation(BaseModel):
     semitones: float = 0.0
 
 
-class TremoloOperation(BaseModel):
-    """Sinusoidal amplitude modulation.
-
-    a[n] = (1 - depth) + depth * (1 + sin(2π f_LFO n / Fs)) / 2
-    y[n] = x[n] * a[n]
-    """
-    op: Literal["tremolo"] = "tremolo"
-    enabled: bool = True
-    rate_hz: float = 5.0         # LFO frequency in Hz
-    depth: float = 0.5           # Modulation depth in [0, 1]
-
-
-class RingModulationOperation(BaseModel):
-    """Multiply by a cosine carrier signal.
-
-    y[n] = x[n] * cos(2π f_c n / Fs)
-    """
-    op: Literal["ring_modulation"] = "ring_modulation"
-    enabled: bool = True
-    carrier_hz: float = 440.0    # Carrier frequency in Hz
-
-
 class EchoDelayOperation(BaseModel):
     """Recursive delay / echo effect.
 
@@ -157,8 +135,6 @@ AnyEffect = Annotated[
         SpeedOperation,
         TimeStretchOperation,
         PitchShiftOperation,
-        TremoloOperation,
-        RingModulationOperation,
         EchoDelayOperation,
         ChorusOperation,
         SoftDistortionOperation,

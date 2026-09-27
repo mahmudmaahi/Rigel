@@ -2,13 +2,12 @@
 dsp_core/effects.py — Module 09 Phase E: Classical Audio Effects
 ==================================================================
 
-Implements five classical time-domain audio effects:
+Implements classical time-domain / frequency-domain audio effects:
 
-    1. Tremolo          — sinusoidal amplitude modulation
-    2. Ring Modulation  — multiplication by a cosine carrier
-    3. Delay / Echo     — recursive comb filter
-    4. Chorus           — modulated delay line with linear interpolation
-    5. Soft Distortion  — tanh-based waveshaping
+    1. Delay / Echo     — recursive comb filter
+    2. Chorus           — modulated delay line with linear interpolation
+    3. Soft Distortion  — tanh-based waveshaping
+    4. Schroeder Reverb  — parallel comb filters + serial allpass filters
 
 Design principles
 -----------------
@@ -30,123 +29,7 @@ from dsp_core.voice_gain import VoiceDSPError, _require_finite_input, _require_f
 
 
 # ---------------------------------------------------------------------------
-# 1. Tremolo
-# ---------------------------------------------------------------------------
-
-
-def apply_tremolo(
-    samples: np.ndarray,
-    sample_rate_hz: int,
-    rate_hz: float,
-    depth: float,
-) -> np.ndarray:
-    """Apply sinusoidal amplitude modulation (tremolo).
-
-    Modulator envelope:
-        a[n] = (1 - d) + d * (1 + sin(2π · f_LFO · n / Fs)) / 2
-
-    Output:
-        y[n] = x[n] · a[n]
-
-    The multiplier a[n] is always in [1 - d, 1]:
-        depth = 0 → a[n] = 1 (identity, no amplitude change)
-        depth = 1 → a[n] oscillates between 0 and 1
-
-    There is no polarity inversion.
-
-    Parameters
-    ----------
-    samples:
-        Float NumPy array — mono 1-D [N] or multi-channel [N, C].
-    sample_rate_hz:
-        Audio sample rate in Hz.
-    rate_hz:
-        LFO frequency in Hz.  Must be > 0 and < Nyquist.
-    depth:
-        Modulation depth in [0, 1].
-        0 = identity, 1 = full amplitude swing from 0 to peak.
-
-    Returns
-    -------
-    float64 array of same shape as *samples*.
-    """
-    if not np.isfinite(rate_hz) or rate_hz <= 0.0:
-        raise ValueError(f"rate_hz must be a finite positive number; got {rate_hz!r}.")
-    if not np.isfinite(depth) or depth < 0.0 or depth > 1.0:
-        raise ValueError(f"depth must be in [0, 1]; got {depth!r}.")
-    if sample_rate_hz <= 0:
-        raise ValueError(f"sample_rate_hz must be > 0; got {sample_rate_hz}.")
-
-    x = samples.astype(np.float64, copy=False)
-    _require_finite_input(x)
-
-    n = np.arange(x.shape[0], dtype=np.float64)
-    envelope = (1.0 - depth) + depth * (1.0 + np.sin(2.0 * np.pi * rate_hz * n / sample_rate_hz)) / 2.0
-
-    if x.ndim == 1:
-        y = x * envelope
-    else:
-        y = x * envelope[:, np.newaxis]
-
-    _require_finite_output(y, "tremolo")
-    return y
-
-
-# ---------------------------------------------------------------------------
-# 2. Ring Modulation
-# ---------------------------------------------------------------------------
-
-
-def apply_ring_modulation(
-    samples: np.ndarray,
-    sample_rate_hz: int,
-    carrier_hz: float,
-) -> np.ndarray:
-    """Apply ring modulation (multiplication by a cosine carrier).
-
-    y[n] = x[n] · cos(2π · f_c · n / Fs)
-
-    Effect: shifts the spectrum so each frequency component f becomes two
-    sidebands at f ± f_c.  carrier_hz = 0 is identity.
-
-    Parameters
-    ----------
-    samples:
-        Float NumPy array — mono 1-D [N] or multi-channel [N, C].
-    sample_rate_hz:
-        Audio sample rate in Hz.
-    carrier_hz:
-        Carrier frequency in Hz.  Must be ≥ 0 and ≤ Nyquist.
-
-    Returns
-    -------
-    float64 array of same shape as *samples*.
-    """
-    nyquist = sample_rate_hz / 2.0
-    if not np.isfinite(carrier_hz) or carrier_hz < 0.0 or carrier_hz > nyquist:
-        raise ValueError(
-            f"carrier_hz must be in [0, {nyquist:.1f} Hz]; got {carrier_hz!r}."
-        )
-    if sample_rate_hz <= 0:
-        raise ValueError(f"sample_rate_hz must be > 0; got {sample_rate_hz}.")
-
-    x = samples.astype(np.float64, copy=False)
-    _require_finite_input(x)
-
-    n = np.arange(x.shape[0], dtype=np.float64)
-    carrier = np.cos(2.0 * np.pi * carrier_hz * n / sample_rate_hz)
-
-    if x.ndim == 1:
-        y = x * carrier
-    else:
-        y = x * carrier[:, np.newaxis]
-
-    _require_finite_output(y, "ring_modulation")
-    return y
-
-
-# ---------------------------------------------------------------------------
-# 3. Delay / Echo
+# 1. Delay / Echo
 # ---------------------------------------------------------------------------
 
 
@@ -206,23 +89,6 @@ def apply_delay(
     mono = x.ndim == 1
     channels = [x] if mono else [x[:, c] for c in range(x.shape[1])]
 
-    processed = []
-    for ch in channels:
-        n_samples = len(ch)
-        y = np.zeros(n_samples, dtype=np.float64)
-        for i in range(n_samples):
-            y[i] = ch[i]
-            if i >= delay_samples:
-                y[i] += mix * feedback * y[i - delay_samples]
-            # First echo (without feedback recirculation)
-            if i >= delay_samples and mix > 0.0:
-                # Only add the first echo if it hasn't been included via feedback
-                # Actually, the standard formulation with feedback already covers this:
-                # y[n] = x[n] + mix * y[n-D]  where y[n-D] carries the echoes
-                pass
-        processed.append(y)
-
-    # Redo with the correct single-pass formulation
     # y[n] = x[n] + mix * y[n-D]
     processed = []
     for ch in channels:
@@ -239,7 +105,7 @@ def apply_delay(
 
 
 # ---------------------------------------------------------------------------
-# 4. Chorus
+# 2. Chorus
 # ---------------------------------------------------------------------------
 
 
@@ -381,7 +247,7 @@ def apply_chorus(
 
 
 # ---------------------------------------------------------------------------
-# 5. Soft Distortion
+# 3. Soft Distortion
 # ---------------------------------------------------------------------------
 
 
@@ -434,69 +300,7 @@ def apply_soft_distortion(
 
 
 # ---------------------------------------------------------------------------
-# 6. Timbre / Voice Color (Spectral Tilt)
-# ---------------------------------------------------------------------------
-
-def apply_timbre_tilt(
-    samples: np.ndarray,
-    sample_rate_hz: int,
-    tilt: float,
-) -> np.ndarray:
-    """Apply a spectral tilt / voice color EQ.
-
-    Pivots the spectrum around 1000 Hz.
-    tilt > 0: boosts high frequencies, attenuates low frequencies (Brightness)
-    tilt < 0: boosts low frequencies, attenuates high frequencies (Warmth)
-    
-    Implemented via first-order Butterworth low-pass and high-pass filters.
-
-    Parameters
-    ----------
-    samples:
-        Float NumPy array — mono 1-D [N] or multi-channel [N, C].
-    sample_rate_hz:
-        Sample rate in Hz.
-    tilt:
-        Tilt parameter in range [-1.0, 1.0].
-        Mapped to +/- 6 dB gain at the extremes.
-    """
-    if not np.isfinite(tilt) or tilt < -1.0 or tilt > 1.0:
-        raise ValueError(f"tilt must be in [-1.0, 1.0]; got {tilt!r}.")
-
-    x = samples.astype(np.float64, copy=False)
-    _require_finite_input(x)
-
-    if abs(tilt) < 1e-9:
-        return x.copy()
-
-    # Max gain of 6 dB for the boosted band, max attenuation of -6 dB for the cut band.
-    gain_db = tilt * 6.0
-    gain_high = 10.0 ** (gain_db / 20.0)
-    gain_low = 10.0 ** (-gain_db / 20.0)
-
-    from scipy.signal import butter, lfilter
-    nyq = sample_rate_hz * 0.5
-    fc = min(1000.0, nyq * 0.9)
-    b_low, a_low = butter(1, fc / nyq, btype='low')
-    b_high, a_high = butter(1, fc / nyq, btype='high')
-
-    mono = x.ndim == 1
-    channels = [x] if mono else [x[:, c] for c in range(x.shape[1])]
-    
-    out_channels = []
-    for ch in channels:
-        lp = lfilter(b_low, a_low, ch)
-        hp = lfilter(b_high, a_high, ch)
-        y_ch = gain_low * lp + gain_high * hp
-        out_channels.append(y_ch)
-
-    y = out_channels[0] if mono else np.stack(out_channels, axis=1)
-    _require_finite_output(y, "timbre")
-    return y
-
-
-# ---------------------------------------------------------------------------
-# 7. Schroeder Reverb
+# 4. Schroeder Reverb
 # ---------------------------------------------------------------------------
 
 def apply_reverb(

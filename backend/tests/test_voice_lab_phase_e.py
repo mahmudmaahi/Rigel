@@ -3,8 +3,6 @@ tests/test_voice_lab_phase_e.py — Module 09 Phase E: Classical Effects
 ========================================================================
 
 Tests cover:
-    - Tremolo          amplitude modulation
-    - Ring Modulation  spectral sidebands
     - Delay            impulse response
     - Chorus           modulated delay behavior
     - Soft Distortion  harmonic generation / bounded output
@@ -14,7 +12,7 @@ import math
 import numpy as np
 import pytest
 from dsp_core.voice_gain import VoiceDSPError
-from dsp_core.effects import apply_tremolo, apply_ring_modulation, apply_delay, apply_chorus, apply_soft_distortion
+from dsp_core.effects import apply_delay, apply_chorus, apply_soft_distortion
 SR = 44100
 
 def _sine(freq_hz: float=440.0, duration_s: float=1.0, sr: int=SR, amplitude: float=0.5) -> np.ndarray:
@@ -36,139 +34,6 @@ def _dominant_freq(signal: np.ndarray, sr: int=SR) -> float:
     spectrum = np.abs(np.fft.rfft(signal.astype(np.float64)))
     freqs = np.fft.rfftfreq(len(signal), d=1.0 / sr)
     return float(freqs[np.argmax(spectrum)])
-
-class TestTremolo:
-
-    def test_depth_zero_is_identity(self):
-        x = _sine(440.0, 0.2)
-        y = apply_tremolo(x, SR, rate_hz=5.0, depth=0.0)
-        np.testing.assert_allclose(y, x, rtol=1e-12)
-
-    def test_depth_one_modulates_fully(self):
-        """With depth=1, the envelope oscillates between 0 and 1."""
-        x = np.ones(SR, dtype=np.float64)
-        y = apply_tremolo(x, SR, rate_hz=1.0, depth=1.0)
-        assert np.min(y) < 0.05, f'Expected near 0 minimum, got {np.min(y):.4f}'
-        assert abs(np.max(y) - 1.0) < 0.01
-
-    def test_no_polarity_inversion(self):
-        """Envelope a[n] must always be ≥ 0."""
-        x = np.ones(SR * 2, dtype=np.float64)
-        y = apply_tremolo(x, SR, rate_hz=3.0, depth=1.0)
-        assert np.all(y >= -1e-12), f'Negative values found; min={np.min(y):.6f}'
-
-    def test_modulation_rate(self):
-        """Envelope oscillation frequency should match LFO rate."""
-        sr = 44100
-        rate = 5.0
-        x = np.ones(sr, dtype=np.float64)
-        y = apply_tremolo(x, sr, rate_hz=rate, depth=1.0)
-        envelope_fft = np.abs(np.fft.rfft(y - np.mean(y)))
-        freqs = np.fft.rfftfreq(len(y), d=1.0 / sr)
-        dom = float(freqs[np.argmax(envelope_fft)])
-        assert abs(dom - rate) < 1.0, f'Expected LFO at {rate} Hz, got {dom:.2f} Hz'
-
-    def test_stereo_shape(self):
-        x = _stereo()
-        y = apply_tremolo(x, SR, rate_hz=4.0, depth=0.5)
-        assert y.shape == x.shape
-
-    def test_silence_returns_silence(self):
-        x = np.zeros(1000, dtype=np.float64)
-        y = apply_tremolo(x, SR, rate_hz=5.0, depth=0.8)
-        assert np.all(y == 0.0)
-
-    def test_output_finite(self):
-        x = _sine()
-        y = apply_tremolo(x, SR, rate_hz=5.0, depth=0.7)
-        assert np.all(np.isfinite(y))
-
-    def test_invalid_depth_raises(self):
-        with pytest.raises(ValueError):
-            apply_tremolo(_sine(), SR, rate_hz=5.0, depth=-0.1)
-        with pytest.raises(ValueError):
-            apply_tremolo(_sine(), SR, rate_hz=5.0, depth=1.1)
-
-    def test_invalid_rate_raises(self):
-        with pytest.raises(ValueError):
-            apply_tremolo(_sine(), SR, rate_hz=0.0, depth=0.5)
-        with pytest.raises(ValueError):
-            apply_tremolo(_sine(), SR, rate_hz=-1.0, depth=0.5)
-
-    def test_nan_input_raises(self):
-        x = _sine()
-        x[10] = np.nan
-        with pytest.raises(VoiceDSPError):
-            apply_tremolo(x, SR, rate_hz=5.0, depth=0.5)
-
-    def test_short_signal(self):
-        x = _sine(440.0, 0.001)
-        y = apply_tremolo(x, SR, rate_hz=5.0, depth=0.5)
-        assert len(y) == len(x)
-        assert np.all(np.isfinite(y))
-
-class TestRingModulation:
-
-    def test_zero_carrier_is_identity(self):
-        x = _sine(440.0, 0.5)
-        y = apply_ring_modulation(x, SR, carrier_hz=0.0)
-        np.testing.assert_allclose(y, x, rtol=1e-12)
-
-    def test_sidebands_exist(self):
-        """440 Hz × 400 Hz carrier should produce energy at 40 Hz and 840 Hz."""
-        signal_hz = 440.0
-        carrier_hz = 400.0
-        x = _sine(signal_hz, 2.0, SR, amplitude=0.5)
-        y = apply_ring_modulation(x, SR, carrier_hz=carrier_hz)
-        spectrum = np.abs(np.fft.rfft(y))
-        freqs = np.fft.rfftfreq(len(y), d=1.0 / SR)
-
-        def _energy_near(target_hz: float, tol_hz: float=10.0) -> float:
-            mask = np.abs(freqs - target_hz) < tol_hz
-            return float(np.max(spectrum[mask]))
-        lower_sb = _energy_near(abs(signal_hz - carrier_hz))
-        upper_sb = _energy_near(signal_hz + carrier_hz)
-        assert lower_sb > 0.01, f'Lower sideband at {abs(signal_hz - carrier_hz)} Hz too weak'
-        assert upper_sb > 0.01, f'Upper sideband at {signal_hz + carrier_hz} Hz too weak'
-
-    def test_original_carrier_suppressed(self):
-        """Ring mod should suppress the original carrier frequency."""
-        signal_hz = 440.0
-        carrier_hz = 400.0
-        x = _sine(signal_hz, 2.0, SR, amplitude=0.5)
-        y = apply_ring_modulation(x, SR, carrier_hz=carrier_hz)
-        spectrum = np.abs(np.fft.rfft(y))
-        freqs = np.fft.rfftfreq(len(y), d=1.0 / SR)
-        mask_orig = np.abs(freqs - signal_hz) < 5.0
-        assert np.max(spectrum[mask_orig]) < 0.01
-
-    def test_stereo_shape(self):
-        x = _stereo()
-        y = apply_ring_modulation(x, SR, carrier_hz=300.0)
-        assert y.shape == x.shape
-
-    def test_silence_returns_silence(self):
-        x = np.zeros(SR, dtype=np.float64)
-        y = apply_ring_modulation(x, SR, carrier_hz=440.0)
-        np.testing.assert_allclose(y, 0.0, atol=1e-15)
-
-    def test_output_finite(self):
-        x = _sine()
-        y = apply_ring_modulation(x, SR, carrier_hz=440.0)
-        assert np.all(np.isfinite(y))
-
-    def test_invalid_carrier_raises(self):
-        nyq = SR / 2.0
-        with pytest.raises(ValueError):
-            apply_ring_modulation(_sine(), SR, carrier_hz=-1.0)
-        with pytest.raises(ValueError):
-            apply_ring_modulation(_sine(), SR, carrier_hz=nyq + 1.0)
-
-    def test_nan_input_raises(self):
-        x = _sine()
-        x[5] = np.nan
-        with pytest.raises(VoiceDSPError):
-            apply_ring_modulation(x, SR, carrier_hz=440.0)
 
 class TestDelay:
 

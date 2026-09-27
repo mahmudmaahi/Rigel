@@ -33,9 +33,29 @@
   font-style: normal;
 }
 
+/* Design tokens — the single source of truth for the app's dark/purple
+   "laboratory" palette. Referenced by tailwind.config.ts (background,
+   foreground, card, border, muted, primary, accent, destructive) and by
+   the shared components/ui/{card,badge} primitives. */
+:root {
+  --background: #080811;
+  --foreground: #ffffff;
+  --card: #0c0c16;
+  --card-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.1);
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: #94a3b8;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --accent: #818cf8;
+  --accent-foreground: #0c0c16;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+}
+
 @layer base {
   body {
-    @apply bg-[#0A0A14] text-white;
+    @apply bg-[color:var(--background)] text-white;
   }
 }
 
@@ -51,7 +71,7 @@ html {
 body {
   min-height: 100vh;
   margin: 0;
-  background: #0A0A14;
+  background: var(--background);
   color: white;
   font-feature-settings: "rlig" 1, "calt" 1;
   text-rendering: optimizeLegibility;

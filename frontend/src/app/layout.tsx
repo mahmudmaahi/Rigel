@@ -27,11 +27,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`antialiased`}
-        style={{ fontFamily: "'Century Gothic', sans-serif" }}
-      >
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className="antialiased font-sans">
         {children}
       </body>
     </html>

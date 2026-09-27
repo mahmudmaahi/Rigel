@@ -36,10 +36,10 @@ const config: Config = {
         },
         "marquee-left": {
           "0%": { transform: "translateX(0%)" },
-          "100%": { transform: "translateX(-33.333%)" }, // Because we triplicated the list
+          "100%": { transform: "translateX(-25%)" }, // 4 copies, scroll one set
         },
         "marquee-right": {
-          "0%": { transform: "translateX(-33.333%)" },
+          "0%": { transform: "translateX(-25%)" },
           "100%": { transform: "translateX(0%)" },
         },
       },

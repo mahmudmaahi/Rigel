@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 from dsp_core.time_scale import apply_time_stretch, apply_speed
 from dsp_core.pitch_shift import apply_pitch_shift
-from dsp_core.effects import apply_timbre_tilt, apply_reverb
+from dsp_core.effects import apply_reverb
 SR = 44100
 
 def _sine(freq=440.0, duration=1.0, sr=SR, amplitude=0.5):
@@ -35,16 +35,25 @@ class TestPhaseVocoderValidation:
         assert abs(f_dom - 440.0) < 5.0
 
     def test_speed_2x(self):
+        """Speed is tape-style: 2x speed halves duration AND doubles pitch."""
         x = _sine(1000.0, 1.0, SR)
         y = apply_speed(x, SR, 2.0)
         assert abs(len(y) - 0.5 * SR) < 1000
         f_dom = _dominant_freq(y, SR)
-        assert abs(f_dom - 1000.0) < 5.0
+        assert abs(f_dom - 2000.0) < 20.0
 
     def test_speed_half(self):
+        """Speed is tape-style: 0.5x speed doubles duration AND halves pitch."""
         x = _sine(1000.0, 1.0, SR)
         y = apply_speed(x, SR, 0.5)
         assert abs(len(y) - 2.0 * SR) < 1000
+        f_dom = _dominant_freq(y, SR)
+        assert abs(f_dom - 500.0) < 20.0
+
+    def test_speed_unity_is_identity(self):
+        x = _sine(1000.0, 1.0, SR)
+        y = apply_speed(x, SR, 1.0)
+        assert abs(len(y) - len(x)) <= 1
         f_dom = _dominant_freq(y, SR)
         assert abs(f_dom - 1000.0) < 5.0
 
@@ -96,17 +105,7 @@ class TestPhaseVocoderValidation:
             assert abs(len(y) - 0.25 * sr) < 500
 
 class TestEffects:
-    """Validate Timbre and Reverb"""
-
-    def test_timbre_neutral(self):
-        x = _sine(440.0, 1.0, SR)
-        y = apply_timbre_tilt(x, SR, 0.0)
-        np.testing.assert_allclose(x, y, rtol=1e-07, atol=1e-07)
-
-    def test_timbre_bright(self):
-        x = _sine(440.0, 0.1, SR) + _sine(4000.0, 0.1, SR)
-        y = apply_timbre_tilt(x, SR, 1.0)
-        assert np.isfinite(y).all()
+    """Validate Reverb"""
 
     def test_reverb_neutral(self):
         x = _sine(440.0, 1.0, SR)

@@ -35,8 +35,6 @@ from dsp_core.voice_gain import (
 from dsp_core.time_scale import apply_speed, apply_time_stretch
 from dsp_core.pitch_shift import apply_pitch_shift
 from dsp_core.effects import (
-    apply_tremolo,
-    apply_ring_modulation,
     apply_delay,
     apply_chorus,
     apply_soft_distortion,
@@ -165,14 +163,6 @@ def process_voice_lab(req: VoiceProcessRequest) -> VoiceProcessResponse:
                 applied.append(f"pitch_shift({effect.semitones:+.2f} semitones)")
             else:
                 applied.append("pitch_shift(0 st)")
-
-        elif op == "tremolo":
-            current = apply_tremolo(current, sr, effect.rate_hz, effect.depth)
-            applied.append(f"tremolo(rate={effect.rate_hz}Hz, depth={effect.depth})")
-
-        elif op == "ring_modulation":
-            current = apply_ring_modulation(current, sr, effect.carrier_hz)
-            applied.append(f"ring_modulation(carrier={effect.carrier_hz}Hz)")
 
         elif op == "echo_delay":
             current = apply_delay(current, sr, effect.delay_ms, effect.feedback, effect.mix)

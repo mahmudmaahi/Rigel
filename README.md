@@ -204,12 +204,32 @@ The frontend uses the browser's local `File` object URL (`URL.createObjectURL`) 
 - `backend/dsp_core/time_scale.py` — Phase vocoder pitch-preserving time-stretch (Speed/Stretch) and standard raw resampling.
 - `backend/dsp_core/voice_gain.py` — Multi-mode gain and normalization (dB, linear, peak, RMS).
 - `backend/dsp_core/pitch_shift.py` — High-quality pitch shifting combining phase vocoder time-stretch and raw resampling (`stretch * r`, then `speed * r`).
-- `backend/dsp_core/effects.py` — Classical effects (Tremolo, Ring Modulation, Delay, Chorus, Soft Distortion, Timbre/Spectral Tilt, Schroeder Reverb) with strict NaN/Inf rejection.
+- `backend/dsp_core/effects.py` — Classical effects (Delay, Chorus, Soft Distortion, Schroeder Reverb) with strict NaN/Inf rejection.
 - FastAPI endpoint: `POST /api/audio/voice/process` — single orchestration endpoint supporting a deterministic DSP chain (Gain → Speed → Time Stretch → Pitch Shift → Effect → Output) with strict clipping risk tracking and optional normalization.
 - `frontend/src/app/playground/voice-lab/page.tsx` — Transformation Observatory UI:
   - Comprehensive controls with mathematical equations shown for the active operations.
   - Dual A/B panel comparing the original audio waveform and spectrum with the processed output.
   - Independent audio players and detailed output metrics (duration, peak, RMS).
+
+**Live Voice Measurement** (part of Voice Laboratory, not a separate module):
+
+- `backend/dsp_core/measurement.py` — real-time and offline audio measurement:
+  - **RMS / Peak loudness** — frame-level energy and peak detection in dBFS.
+  - **YIN Pitch Algorithm** — classical autocorrelation-based fundamental frequency estimator producing pitch_hz, voiced/unvoiced flag, and confidence.
+  - **BPM / Rhythm estimation** — envelope autocorrelation over a decimated onset envelope.
+- **WebSocket endpoint:** `WS /api/audio/measure/stream` — the client sends a JSON handshake (`{"event": "start", "sampleRate": ...}`) negotiating the real sample rate, then raw Float32 PCM binary frames; the server returns JSON `LiveMeasurementFrame` (rms_dbfs, peak_dbfs, pitch_hz, pitch_confidence, voiced) per chunk, computed at the negotiated rate.
+- **Offline endpoint:** `POST /api/audio/measure` — full-file measurement returning nested `MeasurementResponse` (loudness, pitch, rhythm).
+- **Frontend — Live Voice Measurements panel** (embedded in the Voice Lab page):
+  - **Source modes:** Microphone (AudioWorklet Float32 PCM streaming, promoted to the Playground's current/shared audio once recording stops) and Shared Audio (chunked AudioBuffer playback sync).
+  - **SVG timeline graph:** continuous RMS line chart synced to audio playback timeline (up to 60 s for shared audio; rolling 10 s window for microphone). Red dots mark transient clipping peaks (> -1 dBFS). Cyan ticks at the bottom indicate voiced frames.
+  - **Session summary overlay:** once measurement completes (audio finishes, recording stops, or an effect chain is processed), shows Peak dBFS, RMS dBFS, BPM, Avg Pitch, Pitch Range, and Voiced % in a clean card grid — BPM is only shown when the backend judges it statistically reliable; unreliable rhythm (typical for ordinary speech, which has no steady beat) is shown as "---" rather than a fabricated number.
+
+### Module 10 — Audio to Image Encoder & Decoder (COMPLETE)
+
+- `backend/dsp_core/payload_protocol.py` — the **RGL1** binary protocol: packs a losslessly-compressed (FLAC) audio payload plus its original sample rate/channel metadata into a length-prefixed, CRC32-checksummed binary blob (`pack_payload`), and validates/unpacks it back (`unpack_payload`).
+- `backend/dsp_core/image_codec.py` — embeds the RGL1 payload bytes into the pixel data of a lossless PNG "data image" (encode), and extracts them back out (decode).
+- FastAPI endpoints: `POST /api/audio/image/encode` (audio → PNG data image, returns image bytes with an `X-Rigel-Protocol: RGL1` header) and `POST /api/audio/image/decode` (PNG data image → recovered audio, CRC32-validated).
+- `frontend/src/app/playground/image/{encode,decode}/page.tsx` — the **Audio ↔ Image** workspace: an Encode tab (Audio → Data Image) and a Decode tab (Data Image → Audio), each showing payload/compression statistics and validating the round trip.
 
 ### Bin timestamp convention
 
@@ -458,12 +478,12 @@ Verification performed during Module 04:
 - [x] Module 02 - Audio Upload and Loading
 - [x] Module 03 - Waveform Visualization
 - [x] Module 04 - Fourier Analysis
-- [ ] Module 05 - Spectrogram / STFT
-- [ ] Module 06 - Digital Filters
-- [ ] Module 07 - Noise Removal
-- [ ] Module 08 - Voice Activity Detection
-
-> **Note:** Modules 09 through 14 (Voice Tweaks, ANC, Desktop Application, Audio Routing, Real-Time Processing) have been removed from the current project scope due to time constraints.
+- [x] Module 05 - Spectrogram / STFT
+- [x] Module 06 - Digital Filters
+- [x] Module 07 - Noise Removal
+- [x] Module 08 - Voice Activity Detection
+- [x] Module 09 - Voice Laboratory
+- [x] Module 10 - Audio to Image Encoder
 
 ## DSP Concepts Introduced in Module 04
 
@@ -542,10 +562,7 @@ Long audio can produce hundreds of thousands of raw FFT bins. The display spectr
 [x] Module 05 — Spectrogram / STFT
 [x] Module 06 — Digital Filters
 [x] Module 07 — Noise Removal
-[ ] Module 08 — Voice Activity Detection (Status: Final integration validation)
-[ ] Module 09 — Voice Laboratory
+[x] Module 08 — Voice Activity Detection
+[x] Module 09 — Voice Laboratory
+[x] Module 10 — Audio to Image Encoder
 ```
-
-## Next Module
-
-**Module 09 — Voice Laboratory** — classical DSP for manipulating amplitude, time, pitch, and spectral character. Do not begin Module 09 until explicitly instructed.

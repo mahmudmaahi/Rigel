@@ -74,7 +74,6 @@ const EFFECT_OPTIONS = [
   { value: "echo_delay", label: "Echo / Delay" },
   { value: "reverb", label: "Reverb" },
   { value: "chorus", label: "Chorus" },
-  { value: "tremolo", label: "Tremolo" },
   { value: "soft_distortion", label: "Distortion" },
 ];
 
@@ -249,7 +248,7 @@ function MeasurementVisualization({
 }
 
 export default function VoiceLabPage() {
-  const { state, setProcessedAudio, uploadFile } = usePlayground();
+  const { state, uploadFile } = usePlayground();
 
   // ---------------------------------------------------------------------------
   // STATE
@@ -259,6 +258,12 @@ export default function VoiceLabPage() {
   
   // Streaming/Live Measurements
   const [liveFrame, setLiveFrame] = useState<LiveMeasurementFrame | null>(null);
+  // Debounced view of liveFrame for the "Live Pitch" display only: a single
+  // borderline frame flipping voiced<->unvoiced would otherwise flicker the
+  // Hz value and "Unvoiced / Idle" text on and off every ~10ms. Only commit
+  // a switch to "unvoiced" after a few consecutive unvoiced frames.
+  const [displayFrame, setDisplayFrame] = useState<LiveMeasurementFrame | null>(null);
+  const unvoicedStreakRef = useRef(0);
   const [liveFramesTimeline, setLiveFramesTimeline] = useState<{time: number, frame: LiveMeasurementFrame}[]>([]);
   const [sessionStats, setSessionStats] = useState<MeasurementResponse | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -269,6 +274,7 @@ export default function VoiceLabPage() {
   const [micError, setMicError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const recordedChunksRef = useRef<Float32Array[]>([]);
   
   // Shared state
   const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
@@ -303,6 +309,8 @@ export default function VoiceLabPage() {
     setIsPlayingShared(false);
     setWsStatus("disconnected");
     setLiveFrame(null);
+    setDisplayFrame(null);
+    unvoicedStreakRef.current = 0;
     sampleCursorRef.current = 0;
     setCurrentTime(0);
     
@@ -381,37 +389,63 @@ export default function VoiceLabPage() {
   // ---------------------------------------------------------------------------
   // WEBSOCKET LOGIC
   // ---------------------------------------------------------------------------
-  const connectWebSocket = (): Promise<void> => {
+  const connectWebSocket = (sr: number): Promise<void> => {
     return new Promise((resolve, reject) => {
       setWsStatus("connecting");
       const wsUrl = process.env.NEXT_PUBLIC_API_BASE_URL
         ? process.env.NEXT_PUBLIC_API_BASE_URL.replace(/^http/, "ws") + "/api/audio/measure/stream"
         : "ws://127.0.0.1:8000/api/audio/measure/stream";
-        
+
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
-      
+
       ws.onopen = () => {
         setWsStatus("connected");
+        ws.send(JSON.stringify({ event: "start", sampleRate: sr, channels: 1, format: "float32" }));
         resolve();
       };
-      
+
       ws.onerror = (e) => {
         console.error("WS Error:", e);
         reject(e);
       };
-      
+
       ws.onclose = () => {
          setWsStatus("disconnected");
          wsRef.current = null;
       }
-      
+
       ws.onmessage = (event) => {
         if (typeof event.data === "string") {
             try {
-              const frame = JSON.parse(event.data) as LiveMeasurementFrame;
+              const data = JSON.parse(event.data);
+
+              if (data.error) {
+                console.error("Measure stream error:", data.error);
+                return;
+              }
+              if (data.event === "started") {
+                return;
+              }
+
+              const frame = data as LiveMeasurementFrame;
               setLiveFrame(frame);
-              
+
+              // Debounce voiced -> unvoiced transitions for the Live Pitch
+              // display: a single borderline frame flipping voiced<->unvoiced
+              // would otherwise flicker the Hz value and "Unvoiced / Idle"
+              // text on and off every ~10ms. Only commit a switch to
+              // "unvoiced" after a few consecutive unvoiced frames.
+              if (frame.voiced) {
+                unvoicedStreakRef.current = 0;
+                setDisplayFrame(frame);
+              } else {
+                unvoicedStreakRef.current += 1;
+                if (unvoicedStreakRef.current >= 3) {
+                  setDisplayFrame(frame);
+                }
+              }
+
               setLiveFramesTimeline(prev => {
                 let t = 0;
                 if (sourceMode === "shared" && audioPlayerRef.current) {
@@ -419,7 +453,7 @@ export default function VoiceLabPage() {
                 } else if (sourceMode === "microphone") {
                   t = (Date.now() - micStartTimeRef.current) / 1000;
                 }
-                
+
                 return [...prev, { time: t, frame }];
               });
             } catch (e) {}
@@ -445,6 +479,7 @@ export default function VoiceLabPage() {
       setMicError(null);
       setLiveFramesTimeline([]);
       setSessionStats(null);
+      recordedChunksRef.current = [];
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
       streamRef.current = stream;
@@ -463,7 +498,7 @@ export default function VoiceLabPage() {
       source.connect(workletNode);
       workletNode.connect(audioCtx.destination);
 
-      await connectWebSocket();
+      await connectWebSocket(audioCtx.sampleRate);
       setIsRecording(true);
       
       const updateMicTime = () => {
@@ -476,6 +511,7 @@ export default function VoiceLabPage() {
 
       workletNode.port.onmessage = (event) => {
         const buffer = event.data; // Float32Array
+        recordedChunksRef.current.push(new Float32Array(buffer));
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(buffer);
         }
@@ -487,36 +523,38 @@ export default function VoiceLabPage() {
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
     cleanupAll();
-    
-    // In Microphone mode, compute stats when recording stops
-    if (liveFramesTimeline.length > 0) {
-      const pitches = liveFramesTimeline.filter(f => f.frame.voiced).map(f => f.frame.pitch_hz);
-      const rmsVals = liveFramesTimeline.map(f => f.frame.rms_dbfs);
-      const peakVals = liveFramesTimeline.map(f => f.frame.peak_dbfs);
-      
-      const sessionAvgRms = rmsVals.reduce((a,b)=>a+b, 0) / rmsVals.length;
-      const sessionPeak = Math.max(...peakVals);
-      
-      setSessionStats({
-         pitch: {
-           average_pitch_hz: pitches.length > 0 ? pitches.reduce((a,b)=>a+b, 0) / pitches.length : 0,
-           min_pitch_hz: pitches.length > 0 ? Math.min(...pitches) : 0,
-           max_pitch_hz: pitches.length > 0 ? Math.max(...pitches) : 0,
-           voiced_percentage: pitches.length / liveFramesTimeline.length,
-           confidence: 1.0,
-         },
-         loudness: {
-           average_rms_dbfs: sessionAvgRms,
-           peak_dbfs: sessionPeak,
-         },
-         rhythm: {
-           bpm: 0, // BPM not calculated live
-           confidence: 0,
-           reliable: false
-         }
-      });
+
+    // Recording is a NEW SOURCE AUDIO: pull it out of the live buffers before
+    // they're cleared, promote it to the Playground's current/shared audio,
+    // and genuinely measure it (loudness/pitch/BPM) rather than hand-rolling
+    // partial stats — BPM may legitimately come back unreliable for plain
+    // speech, which is correct, not a bug to paper over.
+    const chunks = recordedChunksRef.current;
+    recordedChunksRef.current = [];
+    if (chunks.length === 0) return;
+
+    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+    const combined = new Float32Array(totalLength);
+    let offset = 0;
+    for (const c of chunks) {
+      combined.set(c, offset);
+      offset += c.length;
+    }
+
+    const rate = sampleRate ?? 16000;
+    const samples = [Array.from(combined)];
+
+    const wavBlob = encodeSamplesToWavBlob(samples, rate);
+    const file = new File([wavBlob], "microphone-recording.wav", { type: "audio/wav" });
+    uploadFile(file); // becomes the Playground's current/shared audio; processedAudio is untouched
+
+    try {
+      const measured = await measureAudio(samples, rate);
+      setSessionStats(measured);
+    } catch (e) {
+      setSessionStats(null);
     }
   };
 
@@ -549,8 +587,9 @@ export default function VoiceLabPage() {
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
     
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-       connectWebSocket().then(() => {
-           setSampleRate(audioBuffer?.sampleRate || 16000);
+       const sr = audioBuffer?.sampleRate || 16000;
+       setSampleRate(sr);
+       connectWebSocket(sr).then(() => {
            requestRef.current = requestAnimationFrame(sendNextChunk);
        }).catch(() => setIsPlayingShared(false));
     } else {
@@ -574,6 +613,8 @@ export default function VoiceLabPage() {
         // Remove timeline data after the seek point so it redraws cleanly
         setLiveFramesTimeline(prev => prev.filter(f => f.time <= time));
         setLiveFrame(null);
+        setDisplayFrame(null);
+        unvoicedStreakRef.current = 0;
     }
   };
 
@@ -610,13 +651,17 @@ export default function VoiceLabPage() {
       setProcAudioUrl(newUrl);
       
       const file = new File([wavBlob], "processed.wav", { type: "audio/wav" });
-      const [analyzeRes, specRes, spectroRes] = await Promise.all([
-        analyzeAudio(file), fetchSpectrum(file), fetchSpectrogram(file)
+      const [analyzeRes, specRes, spectroRes, measureRes] = await Promise.all([
+        analyzeAudio(file), fetchSpectrum(file), fetchSpectrogram(file),
+        measureAudio(resp.samples, resp.sample_rate_hz)
       ]);
       setProcWaveform(analyzeRes.waveform);
       setProcSpectrum(specRes.spectrum);
       setProcSpectrogram(spectroRes.spectrogram);
-      
+      // Re-measure against the actual processed output — the pre-processing
+      // stats (offlineMeasure/sessionStats) would otherwise stay stale.
+      setSessionStats(measureRes);
+
     } catch (e: any) {
       setProcessError(e.message || "Processing failed.");
     } finally {
@@ -634,7 +679,6 @@ export default function VoiceLabPage() {
       case "echo_delay": ef = { op: "echo_delay", delay_ms: 300, feedback: 0.4, mix: 0.5, enabled: true }; break;
       case "reverb": ef = { op: "reverb", room_size: 0.5, decay: 0.5, wet: 0.3, enabled: true }; break;
       case "chorus": ef = { op: "chorus", rate_hz: 1.5, depth_ms: 3, base_delay_ms: 15, mix: 0.5, enabled: true }; break;
-      case "tremolo": ef = { op: "tremolo", rate_hz: 5, depth: 0.5, enabled: true }; break;
       case "soft_distortion": ef = { op: "soft_distortion", drive: 3, enabled: true }; break;
       default: return;
     }
@@ -815,46 +859,46 @@ export default function VoiceLabPage() {
                          <div className="bg-black/60 p-4 lg:p-6 rounded-xl border border-white/10 text-center shadow-lg shadow-black/40">
                             <div className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">Peak dBFS</div>
                             <div className="text-2xl font-mono text-emerald-400">
-                               {sessionStats.loudness?.peak_dbfs?.toFixed(1) ?? (sessionStats as any).peak_dbfs?.toFixed(1) ?? "-"}
+                               {sessionStats.loudness?.peak_dbfs?.toFixed(1) ?? "-"}
                             </div>
                          </div>
                          <div className="bg-black/60 p-4 lg:p-6 rounded-xl border border-white/10 text-center shadow-lg shadow-black/40">
                             <div className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">RMS dBFS</div>
                             <div className="text-2xl font-mono text-cyan-400">
-                               {sessionStats.loudness?.average_rms_dbfs?.toFixed(1) ?? (sessionStats as any).rms_dbfs?.toFixed(1) ?? "-"}
+                               {sessionStats.loudness?.average_rms_dbfs?.toFixed(1) ?? "-"}
                             </div>
                          </div>
                          <div className="bg-black/60 p-4 lg:p-6 rounded-xl border border-white/10 text-center shadow-lg shadow-black/40">
                             <div className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">BPM (Rhythm)</div>
                             <div className="text-2xl font-mono text-purple-400">
-                               {sessionStats.rhythm?.reliable || (sessionStats as any).rhythm_reliable
-                                 ? (sessionStats.rhythm?.bpm ?? (sessionStats as any).bpm)?.toFixed(0) 
+                               {sessionStats.rhythm?.reliable
+                                 ? sessionStats.rhythm?.bpm?.toFixed(0)
                                  : "---"}
                             </div>
                          </div>
-                         
+
                          {/* Pitch Stats row */}
                          <div className="col-span-3 grid grid-cols-3 gap-4 lg:gap-6 mt-2">
                              <div className="bg-black/40 p-4 rounded-xl border border-white/5 text-center">
                                 <div className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">Avg Pitch</div>
                                 <div className="text-lg font-mono text-slate-300">
-                                   {(sessionStats.pitch?.average_pitch_hz ?? (sessionStats as any).average_pitch ?? 0) > 0 
-                                      ? `${(sessionStats.pitch?.average_pitch_hz ?? (sessionStats as any).average_pitch).toFixed(1)} Hz` 
+                                   {(sessionStats.pitch?.average_pitch_hz ?? 0) > 0
+                                      ? `${sessionStats.pitch?.average_pitch_hz.toFixed(1)} Hz`
                                       : "---"}
                                 </div>
                              </div>
                              <div className="bg-black/40 p-4 rounded-xl border border-white/5 text-center">
                                 <div className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">Pitch Range</div>
                                 <div className="text-lg font-mono text-slate-300">
-                                   {(sessionStats.pitch?.min_pitch_hz ?? (sessionStats as any).min_pitch ?? 0) > 0 
-                                      ? `${(sessionStats.pitch?.min_pitch_hz ?? (sessionStats as any).min_pitch).toFixed(0)} - ${(sessionStats.pitch?.max_pitch_hz ?? (sessionStats as any).max_pitch).toFixed(0)} Hz` 
+                                   {(sessionStats.pitch?.min_pitch_hz ?? 0) > 0
+                                      ? `${sessionStats.pitch?.min_pitch_hz.toFixed(0)} - ${sessionStats.pitch?.max_pitch_hz.toFixed(0)} Hz`
                                       : "---"}
                                 </div>
                              </div>
                              <div className="bg-black/40 p-4 rounded-xl border border-white/5 text-center">
                                 <div className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">Voiced %</div>
                                 <div className="text-lg font-mono text-slate-300">
-                                   {((sessionStats.pitch?.voiced_percentage ?? (sessionStats as any).voiced_percentage ?? 0) * 100).toFixed(1)}%
+                                   {((sessionStats.pitch?.voiced_percentage ?? 0) * 100).toFixed(1)}%
                                 </div>
                              </div>
                          </div>
@@ -872,8 +916,8 @@ export default function VoiceLabPage() {
                     
                     <div className="flex flex-col justify-between bg-black/40 p-4 rounded-xl border border-white/10">
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Live Pitch</span>
-                      {liveFrame?.voiced ? (
-                        <span className="text-2xl font-mono text-cyan-400">{liveFrame.pitch_hz.toFixed(0)} Hz</span>
+                      {displayFrame?.voiced ? (
+                        <span className="text-2xl font-mono text-cyan-400">{displayFrame.pitch_hz.toFixed(0)} Hz</span>
                       ) : (
                         <span className="text-sm font-mono text-slate-500 mt-2 uppercase">Unvoiced / Idle</span>
                       )}
@@ -998,12 +1042,6 @@ export default function VoiceLabPage() {
                          <Knob label="Rate" value={ef.rate_hz} min={0.1} max={10} step={0.1} unit=" Hz" onChange={v => updateEffect(i, { ...ef, rate_hz: v })} />
                          <Knob label="Depth" value={ef.depth_ms} min={1} max={20} step={0.5} unit=" ms" onChange={v => updateEffect(i, { ...ef, depth_ms: v })} />
                          <div className="col-span-2 w-full"><Knob label="Mix" value={ef.mix * 100} min={0} max={100} step={1} unit="%" precision={0} onChange={v => updateEffect(i, { ...ef, mix: v / 100 })} /></div>
-                      </>
-                    )}
-                    {ef.op === "tremolo" && (
-                      <>
-                         <Knob label="Rate" value={ef.rate_hz} min={0.1} max={20} step={0.1} unit=" Hz" onChange={v => updateEffect(i, { ...ef, rate_hz: v })} />
-                         <Knob label="Depth" value={ef.depth * 100} min={0} max={100} step={1} unit="%" precision={0} onChange={v => updateEffect(i, { ...ef, depth: v / 100 })} />
                       </>
                     )}
                     {ef.op === "soft_distortion" && (

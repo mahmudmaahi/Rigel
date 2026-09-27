@@ -303,47 +303,68 @@ def measure_audio(request: MeasurementRequest) -> MeasurementResponse:
 
 
 from fastapi import WebSocket, WebSocketDisconnect
+import json
 
 @router.websocket("/audio/measure/stream")
 async def measure_audio_stream(websocket: WebSocket):
     """
     Real-time measurement endpoint.
-    Accepts raw binary Float32 PCM frames from the client.
-    Returns JSON stringified LiveMeasurementFrame.
+
+    Protocol:
+        1. Client sends a JSON handshake first: {"event": "start", "sampleRate": <int>}.
+           Server replies {"event": "started"} once negotiated.
+        2. All subsequent client messages are raw binary Float32 PCM frames.
+           Server replies with a JSON-stringified LiveMeasurementFrame per frame,
+           computed using the sample rate negotiated in step 1.
     """
     from dsp_core.measurement import measure_loudness, estimate_pitch_yin_frame
-    
+
     await websocket.accept()
-    
-    # Assume 16kHz for live streaming unless told otherwise. 
-    # For a robust implementation, the client could send a JSON config frame first,
-    # but binary raw PCM is required by the prompt constraints for the audio data.
-    sample_rate = 16000 
-    
+    sample_rate: int | None = None
+
     try:
         while True:
-            # Wait for raw binary PCM bytes (Float32)
-            data = await websocket.receive_bytes()
-            
-            # Convert binary to NumPy float32 array
-            frame = np.frombuffer(data, dtype=np.float32)
-            
-            # Measure loudness
-            loudness = measure_loudness(frame)
-            
-            # Measure pitch (YIN)
-            pitch = estimate_pitch_yin_frame(frame, sample_rate)
-            
-            response = LiveMeasurementFrame(
-                rms_dbfs=loudness["rms_dbfs"],
-                peak_dbfs=loudness["peak_dbfs"],
-                pitch_hz=pitch["frequency_hz"],
-                pitch_confidence=pitch["confidence"],
-                voiced=pitch["voiced"]
-            )
-            
-            await websocket.send_json(response.model_dump())
-            
+            message = await websocket.receive()
+
+            if message.get("type") == "websocket.disconnect":
+                break
+
+            if "text" in message:
+                try:
+                    data = json.loads(message["text"])
+                except json.JSONDecodeError:
+                    await websocket.send_json({"error": "Invalid JSON payload"})
+                    continue
+
+                if data.get("event") == "start":
+                    sr = data.get("sampleRate")
+                    if not sr or type(sr) not in (int, float) or sr <= 0:
+                        await websocket.send_json({"error": "Invalid sampleRate"})
+                        continue
+                    sample_rate = int(sr)
+                    await websocket.send_json({"event": "started"})
+                continue
+
+            elif "bytes" in message:
+                if sample_rate is None:
+                    await websocket.send_json({"error": "Session not started"})
+                    continue
+
+                frame = np.frombuffer(message["bytes"], dtype=np.float32)
+
+                loudness = measure_loudness(frame)
+                pitch = estimate_pitch_yin_frame(frame, sample_rate)
+
+                response = LiveMeasurementFrame(
+                    rms_dbfs=loudness["rms_dbfs"],
+                    peak_dbfs=loudness["peak_dbfs"],
+                    pitch_hz=pitch["frequency_hz"],
+                    pitch_confidence=pitch["confidence"],
+                    voiced=pitch["voiced"]
+                )
+
+                await websocket.send_json(response.model_dump())
+
     except WebSocketDisconnect:
         pass
     except Exception as e:

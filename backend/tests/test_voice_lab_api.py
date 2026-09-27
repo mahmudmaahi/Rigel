@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 import numpy as np
 import pytest
-from app.models.voice_lab import VoiceProcessRequest, GainOperation, SpeedOperation, TimeStretchOperation, PitchShiftOperation, TremoloOperation, EchoDelayOperation, SoftDistortionOperation
+from app.models.voice_lab import VoiceProcessRequest, GainOperation, SpeedOperation, TimeStretchOperation, PitchShiftOperation, ChorusOperation, EchoDelayOperation, SoftDistortionOperation
 from app.services.voice_lab_service import process_voice_lab, _samples_to_numpy, _numpy_to_samples
 SR = 44100
 
@@ -133,6 +133,15 @@ class TestSpeedOperation:
         assert abs(resp.output_duration_s - 0.5) < 0.01
         assert abs(resp.input_duration_s - 1.0) < 1e-06
 
+    def test_2x_speed_doubles_pitch(self):
+        """Speed is tape-style: pitch must change proportionally, unlike Time Stretch."""
+        samples, arr = _make_sine_request(freq_hz=440.0, duration_s=1.0)
+        req = VoiceProcessRequest(samples=samples, sample_rate_hz=SR, effect_chain=[SpeedOperation(speed=2.0)])
+        resp = process_voice_lab(req)
+        out = np.array(resp.samples[0])
+        dom = _dominant_freq(out, SR)
+        assert abs(dom - 880.0) < 880.0 * 0.03
+
 class TestPitchShiftOperation:
 
     def test_plus_12_semitones_frequency(self):
@@ -147,7 +156,7 @@ class TestChainedOperations:
 
     def test_gain_then_effect(self):
         samples, _ = _make_sine_request(amplitude=0.3)
-        req = VoiceProcessRequest(samples=samples, sample_rate_hz=SR, effect_chain=[GainOperation(mode='db', gain_value=6.0), TremoloOperation(rate_hz=5.0, depth=0.5)])
+        req = VoiceProcessRequest(samples=samples, sample_rate_hz=SR, effect_chain=[GainOperation(mode='db', gain_value=6.0), ChorusOperation(rate_hz=1.5, depth_ms=3.0, base_delay_ms=15.0, mix=0.5)])
         resp = process_voice_lab(req)
         assert resp.status == 'processed'
         assert len(resp.operations_applied) >= 2

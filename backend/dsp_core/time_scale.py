@@ -390,17 +390,17 @@ def apply_speed(
     samples: np.ndarray,
     sample_rate_hz: int,
     speed: float,
-    n_fft: int = PV_N,
-    hop_analysis: int = PV_HA,
 ) -> np.ndarray:
-    """Change speaking speed/duration while approximately preserving pitch.
+    """Change playback speed using polyphase resampling (tape-style).
 
-    For Rigel Voice Lab, Speed is conceptually a pitch-preserving time stretch.
-    speed = 1.0 -> duration unchanged, pitch unchanged
-    speed = 2.0 -> duration approximately 0.5x, pitch unchanged
-    speed = 0.5 -> duration approximately 2.0x, pitch unchanged
+    Duration and pitch change together, proportionally — this is the
+    classic "tape speed" effect, distinct from Time Stretch (which
+    preserves pitch). A thin wrapper around `_apply_raw_resampling`.
 
-    Internally implemented as time stretch by (1.0 / speed).
+    Convention:
+        speed = 1.0  ->  unchanged  (duration = T, pitch = f)
+        speed = 2.0  ->  half duration, pitch doubled
+        speed = 0.5  ->  double duration, pitch halved
 
     Parameters
     ----------
@@ -410,23 +410,9 @@ def apply_speed(
         Sample rate in Hz.
     speed:
         Speed factor. Must be finite and > 0. Practical range: 0.25–4.0.
-    n_fft:
-        Phase-vocoder FFT window size (default 2048).
-    hop_analysis:
-        Phase-vocoder analysis hop (default 512).
 
     Returns
     -------
     float64 array. Shape: [M] or [M, C] where M ≈ N / speed.
     """
-    if not np.isfinite(speed) or speed <= 0.0:
-        raise ValueError(f"speed must be a finite positive number; got {speed!r}.")
-    
-    # Unity: skip processing
-    if abs(speed - 1.0) < 1e-9:
-        x = samples.astype(np.float64, copy=False)
-        _require_finite_input(x)
-        return x.copy()
-
-    stretch = 1.0 / speed
-    return apply_time_stretch(samples, sample_rate_hz, stretch, n_fft, hop_analysis)
+    return _apply_raw_resampling(samples, sample_rate_hz, speed)

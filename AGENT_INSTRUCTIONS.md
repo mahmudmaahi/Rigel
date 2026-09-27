@@ -373,7 +373,17 @@ A classical DSP Transformation Observatory focusing on:
 
 Core architectural principle: All processing forms a reproducible chain starting from the original audio. Parameters invalidate and recalculate the chain rather than compounding numerically. Use a single orchestration endpoint `POST /api/audio/voice/process` with strongly typed operations. Output strictly guarantees numerical safety (clipping/normalization).
 
-### Module 10 --- Adaptive Noise Cancellation
+### Module 10 --- Live Voice Measurement (COMPLETE)
+
+A real-time audio measurement and analysis module built on top of Module 08's WebSocket session architecture. Exposes RMS, Peak, Pitch (YIN), and Voiced/Unvoiced detection as a live streaming feed alongside the Voice Laboratory UI.
+
+- **Sources:** Microphone (via AudioWorklet PCM streaming) and Shared Audio (chunked Float32 playback sync).
+- **Backend endpoint:** `GET /api/audio/measure/stream` (WebSocket) — accepts raw Float32 PCM chunks, returns `LiveMeasurementFrame` (rms_dbfs, peak_dbfs, pitch_hz, pitch_confidence, voiced).
+- **Offline endpoint:** `POST /api/audio/measure` — full-file measurement returning loudness (RMS/Peak), pitch aggregation (avg/min/max/voiced%), and rhythm (BPM) statistics.
+- **Pitch algorithm:** YIN algorithm in `dsp_core/measurement.py` — a classical autocorrelation-based fundamental frequency estimator.
+- **Frontend:** SVG-based continuous timeline graph for shared audio (up to 60 s window), rolling 10 s window for microphone. Session summary overlay (Peak dBFS, RMS, BPM, Avg Pitch, Range, Voiced%) appears automatically when stream ends.
+
+### Module 11 --- Adaptive Noise Cancellation
 
 Study and implement: - reference signal - adaptive filter - LMS - error
 signal - convergence - performance visualization
@@ -387,7 +397,7 @@ ANC.
 
 ## Phase 4 --- Desktop Real-Time System
 
-### Module 11 --- Desktop Application
+### Module 12 --- Desktop Application
 
 Only after the web application foundation is stable.
 
@@ -396,7 +406,7 @@ The desktop application should reuse the DSP core.
 Potential responsibilities: - microphone capture - real-time framing -
 real-time processing - audio playback/output - controls - monitoring
 
-### Module 12 --- Virtual Microphone / Audio Routing
+### Module 13 --- Virtual Microphone / Audio Routing
 
 Future Windows-specific work: - route processed microphone audio to a
 virtual audio device - allow calling applications to use processed
@@ -404,11 +414,11 @@ audio - carefully measure latency and stability
 
 This is an audio I/O/system-integration problem, not just a DSP problem.
 
-### Module 13 --- Real-Time Noise Suppression
+### Module 14 --- Real-Time Noise Suppression
 
 Adapt suitable denoising algorithms for real-time processing.
 
-### Module 14 --- Real-Time Voice Effects
+### Module 15 --- Real-Time Voice Effects
 
 Apply pitch/effect processing with low latency.
 
@@ -429,10 +439,10 @@ replacing the classical DSP architecture.
 
 # 7. Current Project Scope
 
-Our current scope covers Phase 1 through Phase 3 (Modules 01 to 09).
+Our current scope covers Phase 1 through Phase 3 (Modules 01 to 10).
 
 ```text
-Upload Audio → Waveform → Frequency Analysis → Spectrogram → Filters → Denoising → VAD → Voice Tweaks
+Upload Audio → Waveform → Frequency Analysis → Spectrogram → Filters → Denoising → VAD → Voice Tweaks → Live Measurement
 ```
 
 Do NOT implement modules beyond Phase 3 (like ANC, real-time routing, or AI) unless explicitly requested.
