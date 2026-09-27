@@ -267,18 +267,13 @@ async def denoise_audio(
 def voice_process(request: VoiceProcessRequest) -> VoiceProcessResponse:
     """Module 09 — Apply the Voice Lab processing chain to audio samples.
 
-    Canonical chain (non-reorderable):
-        Input → Gain → Speed → TimeStretch → PitchShift → Effect → Output
+    Chain (deterministic, sequential):
+        Effect 1 → Effect 2 → Effect 3 → ...
 
     All processing begins from the original input samples.
     Never feeds previous processed output back into the chain.
 
-    Operations with neutral parameters are bypassed:
-        gain: mode=db, gain_value=0.0 (0 dB)
-        speed: speed=1.0
-        time_stretch: stretch=1.0
-        pitch_shift: semitones=0.0
-        effect: null
+    Operations with enabled=False are bypassed.
 
     If prevent_clipping=True and output peak > 1.0, peak normalization is
     applied as an explicit final step and reported in the response.
@@ -291,3 +286,69 @@ def voice_process(request: VoiceProcessRequest) -> VoiceProcessResponse:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Voice Lab DSP error: {exc}") from exc
+
+
+from app.models.measurement import MeasurementRequest, MeasurementResponse, LiveMeasurementFrame
+from app.services.measurement_service import process_measurements
+import numpy as np
+
+@router.post("/audio/measure", response_model=MeasurementResponse, tags=["measurement"])
+def measure_audio(request: MeasurementRequest) -> MeasurementResponse:
+    """Analyze uploaded audio to measure Loudness, Pitch, and Rhythm."""
+    from fastapi import HTTPException
+    try:
+        return process_measurements(request)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Measurement DSP error: {exc}") from exc
+
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+@router.websocket("/audio/measure/stream")
+async def measure_audio_stream(websocket: WebSocket):
+    """
+    Real-time measurement endpoint.
+    Accepts raw binary Float32 PCM frames from the client.
+    Returns JSON stringified LiveMeasurementFrame.
+    """
+    from dsp_core.measurement import measure_loudness, estimate_pitch_yin_frame
+    
+    await websocket.accept()
+    
+    # Assume 16kHz for live streaming unless told otherwise. 
+    # For a robust implementation, the client could send a JSON config frame first,
+    # but binary raw PCM is required by the prompt constraints for the audio data.
+    sample_rate = 16000 
+    
+    try:
+        while True:
+            # Wait for raw binary PCM bytes (Float32)
+            data = await websocket.receive_bytes()
+            
+            # Convert binary to NumPy float32 array
+            frame = np.frombuffer(data, dtype=np.float32)
+            
+            # Measure loudness
+            loudness = measure_loudness(frame)
+            
+            # Measure pitch (YIN)
+            pitch = estimate_pitch_yin_frame(frame, sample_rate)
+            
+            response = LiveMeasurementFrame(
+                rms_dbfs=loudness["rms_dbfs"],
+                peak_dbfs=loudness["peak_dbfs"],
+                pitch_hz=pitch["frequency_hz"],
+                pitch_confidence=pitch["confidence"],
+                voiced=pitch["voiced"]
+            )
+            
+            await websocket.send_json(response.model_dump())
+            
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        try:
+            await websocket.close()
+        except:
+            pass

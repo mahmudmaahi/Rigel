@@ -510,35 +510,33 @@ export async function applyDenoise(
 
 export type VoiceGainMode = "linear" | "db" | "peak" | "rms";
 
-export type VoiceGainOperation = { op: "gain"; mode: VoiceGainMode; gain_value: number };
-export type VoiceSpeedOperation = { op: "speed"; speed: number };
-export type VoiceTimeStretchOperation = { op: "time_stretch"; stretch: number };
-export type VoicePitchShiftOperation = { op: "pitch_shift"; semitones: number };
-export type VoiceTremoloEffect = { op: "tremolo"; rate_hz: number; depth: number };
-export type VoiceRingModEffect = { op: "ring_modulation"; carrier_hz: number };
-export type VoiceDelayEffect = { op: "delay"; delay_ms: number; feedback: number; mix: number };
-export type VoiceChorusEffect = { op: "chorus"; rate_hz: number; depth_ms: number; base_delay_ms: number; mix: number };
-export type VoiceDistortionEffect = { op: "soft_distortion"; drive: number };
-export type VoiceTimbreEffect = { op: "timbre"; tilt: number };
-export type VoiceReverbEffect = { op: "reverb"; room_size: number; decay: number; wet: number };
+export type VoiceGainOperation = { op: "gain"; enabled?: boolean; mode: VoiceGainMode; gain_value: number };
+export type VoiceSpeedOperation = { op: "speed"; enabled?: boolean; speed: number };
+export type VoiceTimeStretchOperation = { op: "time_stretch"; enabled?: boolean; stretch: number };
+export type VoicePitchShiftOperation = { op: "pitch_shift"; enabled?: boolean; semitones: number };
+export type VoiceTremoloEffect = { op: "tremolo"; enabled?: boolean; rate_hz: number; depth: number };
+export type VoiceRingModEffect = { op: "ring_modulation"; enabled?: boolean; carrier_hz: number };
+export type VoiceEchoDelayEffect = { op: "echo_delay"; enabled?: boolean; delay_ms: number; feedback: number; mix: number };
+export type VoiceChorusEffect = { op: "chorus"; enabled?: boolean; rate_hz: number; depth_ms: number; base_delay_ms: number; mix: number };
+export type VoiceDistortionEffect = { op: "soft_distortion"; enabled?: boolean; drive: number };
+export type VoiceReverbEffect = { op: "reverb"; enabled?: boolean; room_size: number; decay: number; wet: number };
 
 export type VoiceEffect = 
+  | VoiceGainOperation
+  | VoiceSpeedOperation
+  | VoiceTimeStretchOperation
+  | VoicePitchShiftOperation
   | VoiceTremoloEffect 
   | VoiceRingModEffect 
-  | VoiceDelayEffect 
+  | VoiceEchoDelayEffect 
   | VoiceChorusEffect 
   | VoiceDistortionEffect
-  | VoiceTimbreEffect
   | VoiceReverbEffect;
 
 export type VoiceProcessRequest = {
   samples: number[][];
   sample_rate_hz: number;
-  gain?: VoiceGainOperation | null;
-  speed?: VoiceSpeedOperation | null;
-  time_stretch?: VoiceTimeStretchOperation | null;
-  pitch_shift?: VoicePitchShiftOperation | null;
-  effect?: VoiceEffect | null;
+  effect_chain?: VoiceEffect[];
   prevent_clipping?: boolean;
 };
 
@@ -568,6 +566,63 @@ export async function processVoiceLab(request: VoiceProcessRequest): Promise<Voi
     throw new Error(message);
   }
   return response.json() as Promise<VoiceProcessResponse>;
+}
+
+// ---------------------------------------------------------------------------
+// Measurements API (Module 09 - Measurement)
+// ---------------------------------------------------------------------------
+
+export type LoudnessMeasurement = {
+  average_rms_dbfs: number;
+  peak_dbfs: number;
+};
+
+export type PitchMeasurement = {
+  average_pitch_hz: number;
+  min_pitch_hz: number;
+  max_pitch_hz: number;
+  voiced_percentage: number;
+  confidence: number;
+};
+
+export type RhythmMeasurement = {
+  bpm: number;
+  confidence: number;
+  reliable: boolean;
+};
+
+export type MeasurementResponse = {
+  loudness: LoudnessMeasurement;
+  pitch: PitchMeasurement;
+  rhythm: RhythmMeasurement;
+};
+
+export type LiveMeasurementFrame = {
+  rms_dbfs: number;
+  peak_dbfs: number;
+  pitch_hz: number;
+  pitch_confidence: number;
+  voiced: boolean;
+};
+
+export async function measureAudio(samples: number[][], sampleRateHz: number): Promise<MeasurementResponse> {
+  const request = {
+    samples: samples,
+    sample_rate_hz: sampleRateHz
+  };
+
+  const response = await fetch(`${API_BASE_URL}/api/audio/measure`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    let message = "Audio measurement failed.";
+    try { const err = (await response.json()) as { detail?: string }; if (err.detail) message = err.detail; } catch { /* ignore */ }
+    throw new Error(message);
+  }
+  return response.json() as Promise<MeasurementResponse>;
 }
 
 /** Decode a WAV Blob into list-of-channels float arrays via Web Audio API. */

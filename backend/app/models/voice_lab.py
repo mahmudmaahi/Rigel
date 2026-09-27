@@ -39,6 +39,7 @@ class GainOperation(BaseModel):
         'rms'     → normalize RMS to gain_value (default 0.1)
     """
     op: Literal["gain"] = "gain"
+    enabled: bool = True
     mode: Literal["linear", "db", "peak", "rms"] = "db"
     gain_value: float = 0.0      # 0 dB = unity for 'db' mode
 
@@ -51,6 +52,7 @@ class SpeedOperation(BaseModel):
     speed = 0.5  →  double duration, pitch halved
     """
     op: Literal["speed"] = "speed"
+    enabled: bool = True
     speed: float = 1.0           # Must be > 0
 
 
@@ -63,6 +65,7 @@ class TimeStretchOperation(BaseModel):
     stretch = 0.5  →  half as long
     """
     op: Literal["time_stretch"] = "time_stretch"
+    enabled: bool = True
     stretch: float = 1.0         # Must be > 0
 
 
@@ -74,6 +77,7 @@ class PitchShiftOperation(BaseModel):
     semitones = -12  →  one octave down (440 → 220 Hz)
     """
     op: Literal["pitch_shift"] = "pitch_shift"
+    enabled: bool = True
     semitones: float = 0.0
 
 
@@ -84,6 +88,7 @@ class TremoloOperation(BaseModel):
     y[n] = x[n] * a[n]
     """
     op: Literal["tremolo"] = "tremolo"
+    enabled: bool = True
     rate_hz: float = 5.0         # LFO frequency in Hz
     depth: float = 0.5           # Modulation depth in [0, 1]
 
@@ -94,15 +99,17 @@ class RingModulationOperation(BaseModel):
     y[n] = x[n] * cos(2π f_c n / Fs)
     """
     op: Literal["ring_modulation"] = "ring_modulation"
+    enabled: bool = True
     carrier_hz: float = 440.0    # Carrier frequency in Hz
 
 
-class DelayOperation(BaseModel):
+class EchoDelayOperation(BaseModel):
     """Recursive delay / echo effect.
 
     y[n] = x[n] + mix * feedback * y[n - D]
     """
-    op: Literal["delay"] = "delay"
+    op: Literal["echo_delay"] = "echo_delay"
+    enabled: bool = True
     delay_ms: float = 300.0      # Delay time in milliseconds
     feedback: float = 0.4        # Feedback gain [0, 1)
     mix: float = 0.5             # Wet/dry mix [0, 1]
@@ -115,6 +122,7 @@ class ChorusOperation(BaseModel):
     y[n] = (1 - mix) * x[n] + mix * x_delayed[n]
     """
     op: Literal["chorus"] = "chorus"
+    enabled: bool = True
     rate_hz: float = 1.5         # LFO rate in Hz
     depth_ms: float = 3.0        # Modulation depth in ms
     base_delay_ms: float = 15.0  # Base delay in ms (must be > depth_ms)
@@ -127,23 +135,16 @@ class SoftDistortionOperation(BaseModel):
     y[n] = tanh(drive * x[n]) / tanh(drive)
     """
     op: Literal["soft_distortion"] = "soft_distortion"
+    enabled: bool = True
     drive: float = 3.0           # Saturation drive β in (0, 100]
 
-
-class TimbreOperation(BaseModel):
-    """Spectral tilt (Voice Color).
-
-    tilt > 0: Brightness (boost highs, cut lows)
-    tilt < 0: Warmth (boost lows, cut highs)
-    """
-    op: Literal["timbre"] = "timbre"
-    tilt: float = 0.0            # Tilt parameter [-1.0, 1.0]
 
 
 class ReverbOperation(BaseModel):
     """Schroeder Reverberator.
     """
     op: Literal["reverb"] = "reverb"
+    enabled: bool = True
     room_size: float = 0.5       # Scale for delay lengths [0.1, 1.0]
     decay: float = 0.5           # Feedback coefficient [0.0, 0.99]
     wet: float = 0.3             # Wet/dry mix [0.0, 1.0]
@@ -151,9 +152,18 @@ class ReverbOperation(BaseModel):
 
 # Discriminated union of all effect operations
 AnyEffect = Annotated[
-    Union[TremoloOperation, RingModulationOperation, DelayOperation,
-          ChorusOperation, SoftDistortionOperation, TimbreOperation,
-          ReverbOperation],
+    Union[
+        GainOperation,
+        SpeedOperation,
+        TimeStretchOperation,
+        PitchShiftOperation,
+        TremoloOperation,
+        RingModulationOperation,
+        EchoDelayOperation,
+        ChorusOperation,
+        SoftDistortionOperation,
+        ReverbOperation,
+    ],
     Field(discriminator="op"),
 ]
 
@@ -187,11 +197,7 @@ class VoiceProcessRequest(BaseModel):
     samples: list[list[float]]
     sample_rate_hz: int
 
-    gain: GainOperation | None = None
-    speed: SpeedOperation | None = None
-    time_stretch: TimeStretchOperation | None = None
-    pitch_shift: PitchShiftOperation | None = None
-    effect: AnyEffect | None = None
+    effect_chain: list[AnyEffect] = Field(default_factory=list)
 
     prevent_clipping: bool = False
 

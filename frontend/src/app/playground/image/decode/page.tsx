@@ -200,7 +200,7 @@ export default function DecodePage() {
           {audioUrl && (
             <a
               href={audioUrl}
-              download={`recovered_audio_${Date.now()}.wav`}
+              download="recovered_audio.wav"
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-3 text-sm font-semibold text-white transition-all shadow-lg shadow-indigo-900/20"
             >
               <Download className="h-4 w-4" />

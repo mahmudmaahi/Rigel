@@ -9,63 +9,36 @@ Tests cover:
     - Chorus           modulated delay behavior
     - Soft Distortion  harmonic generation / bounded output
 """
-
 from __future__ import annotations
-
 import math
 import numpy as np
 import pytest
-
 from dsp_core.voice_gain import VoiceDSPError
-from dsp_core.effects import (
-    apply_tremolo,
-    apply_ring_modulation,
-    apply_delay,
-    apply_chorus,
-    apply_soft_distortion,
-)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
+from dsp_core.effects import apply_tremolo, apply_ring_modulation, apply_delay, apply_chorus, apply_soft_distortion
 SR = 44100
 
-
-def _sine(freq_hz: float = 440.0, duration_s: float = 1.0, sr: int = SR,
-          amplitude: float = 0.5) -> np.ndarray:
+def _sine(freq_hz: float=440.0, duration_s: float=1.0, sr: int=SR, amplitude: float=0.5) -> np.ndarray:
     n = int(duration_s * sr)
     t = np.arange(n, dtype=np.float64) / sr
     return amplitude * np.sin(2.0 * np.pi * freq_hz * t)
 
-
-def _stereo(fl: float = 440.0, fr: float = 880.0, duration_s: float = 0.5,
-            sr: int = SR, amp: float = 0.5) -> np.ndarray:
+def _stereo(fl: float=440.0, fr: float=880.0, duration_s: float=0.5, sr: int=SR, amp: float=0.5) -> np.ndarray:
     l_ = _sine(fl, duration_s, sr, amp)
     r_ = _sine(fr, duration_s, sr, amp)
     return np.stack([l_, r_], axis=1)
 
-
-def _impulse(n_samples: int = 1000, pos: int = 0) -> np.ndarray:
+def _impulse(n_samples: int=1000, pos: int=0) -> np.ndarray:
     x = np.zeros(n_samples, dtype=np.float64)
     x[pos] = 1.0
     return x
 
-
-def _dominant_freq(signal: np.ndarray, sr: int = SR) -> float:
+def _dominant_freq(signal: np.ndarray, sr: int=SR) -> float:
     spectrum = np.abs(np.fft.rfft(signal.astype(np.float64)))
     freqs = np.fft.rfftfreq(len(signal), d=1.0 / sr)
     return float(freqs[np.argmax(spectrum)])
 
-
-# =========================================================================
-# TREMOLO
-# =========================================================================
-
-
 class TestTremolo:
+
     def test_depth_zero_is_identity(self):
         x = _sine(440.0, 0.2)
         y = apply_tremolo(x, SR, rate_hz=5.0, depth=0.0)
@@ -75,16 +48,14 @@ class TestTremolo:
         """With depth=1, the envelope oscillates between 0 and 1."""
         x = np.ones(SR, dtype=np.float64)
         y = apply_tremolo(x, SR, rate_hz=1.0, depth=1.0)
-        # Minimum value should approach 0
-        assert np.min(y) < 0.05, f"Expected near 0 minimum, got {np.min(y):.4f}"
-        # Maximum value should be 1.0
+        assert np.min(y) < 0.05, f'Expected near 0 minimum, got {np.min(y):.4f}'
         assert abs(np.max(y) - 1.0) < 0.01
 
     def test_no_polarity_inversion(self):
         """Envelope a[n] must always be ≥ 0."""
         x = np.ones(SR * 2, dtype=np.float64)
         y = apply_tremolo(x, SR, rate_hz=3.0, depth=1.0)
-        assert np.all(y >= -1e-12), f"Negative values found; min={np.min(y):.6f}"
+        assert np.all(y >= -1e-12), f'Negative values found; min={np.min(y):.6f}'
 
     def test_modulation_rate(self):
         """Envelope oscillation frequency should match LFO rate."""
@@ -92,11 +63,10 @@ class TestTremolo:
         rate = 5.0
         x = np.ones(sr, dtype=np.float64)
         y = apply_tremolo(x, sr, rate_hz=rate, depth=1.0)
-        # Envelope is unity-amplitude signal; its FFT should peak at rate Hz
         envelope_fft = np.abs(np.fft.rfft(y - np.mean(y)))
         freqs = np.fft.rfftfreq(len(y), d=1.0 / sr)
         dom = float(freqs[np.argmax(envelope_fft)])
-        assert abs(dom - rate) < 1.0, f"Expected LFO at {rate} Hz, got {dom:.2f} Hz"
+        assert abs(dom - rate) < 1.0, f'Expected LFO at {rate} Hz, got {dom:.2f} Hz'
 
     def test_stereo_shape(self):
         x = _stereo()
@@ -137,13 +107,8 @@ class TestTremolo:
         assert len(y) == len(x)
         assert np.all(np.isfinite(y))
 
-
-# =========================================================================
-# RING MODULATION
-# =========================================================================
-
-
 class TestRingModulation:
+
     def test_zero_carrier_is_identity(self):
         x = _sine(440.0, 0.5)
         y = apply_ring_modulation(x, SR, carrier_hz=0.0)
@@ -158,16 +123,13 @@ class TestRingModulation:
         spectrum = np.abs(np.fft.rfft(y))
         freqs = np.fft.rfftfreq(len(y), d=1.0 / SR)
 
-        def _energy_near(target_hz: float, tol_hz: float = 10.0) -> float:
+        def _energy_near(target_hz: float, tol_hz: float=10.0) -> float:
             mask = np.abs(freqs - target_hz) < tol_hz
             return float(np.max(spectrum[mask]))
-
-        lower_sb = _energy_near(abs(signal_hz - carrier_hz))   # 40 Hz
-        upper_sb = _energy_near(signal_hz + carrier_hz)         # 840 Hz
-
-        # Both sidebands should have significant energy
-        assert lower_sb > 0.01, f"Lower sideband at {abs(signal_hz - carrier_hz)} Hz too weak"
-        assert upper_sb > 0.01, f"Upper sideband at {signal_hz + carrier_hz} Hz too weak"
+        lower_sb = _energy_near(abs(signal_hz - carrier_hz))
+        upper_sb = _energy_near(signal_hz + carrier_hz)
+        assert lower_sb > 0.01, f'Lower sideband at {abs(signal_hz - carrier_hz)} Hz too weak'
+        assert upper_sb > 0.01, f'Upper sideband at {signal_hz + carrier_hz} Hz too weak'
 
     def test_original_carrier_suppressed(self):
         """Ring mod should suppress the original carrier frequency."""
@@ -177,7 +139,6 @@ class TestRingModulation:
         y = apply_ring_modulation(x, SR, carrier_hz=carrier_hz)
         spectrum = np.abs(np.fft.rfft(y))
         freqs = np.fft.rfftfreq(len(y), d=1.0 / SR)
-        # Energy at original signal frequency should be low (ring mod removes carrier)
         mask_orig = np.abs(freqs - signal_hz) < 5.0
         assert np.max(spectrum[mask_orig]) < 0.01
 
@@ -209,13 +170,8 @@ class TestRingModulation:
         with pytest.raises(VoiceDSPError):
             apply_ring_modulation(x, SR, carrier_hz=440.0)
 
-
-# =========================================================================
-# DELAY
-# =========================================================================
-
-
 class TestDelay:
+
     def test_dry_mix_is_identity(self):
         """mix=0.0 → no delayed signal added, output equals input."""
         x = _sine(440.0, 0.2)
@@ -224,27 +180,18 @@ class TestDelay:
 
     def test_impulse_response_structure(self):
         """Dirac impulse at n=0 should produce echo at D samples."""
-        n_samp = SR  # 1 second
+        n_samp = SR
         x = _impulse(n_samp, pos=0)
         delay_ms = 100.0
-        D = int(round(delay_ms * SR / 1000.0))  # = 4410
+        D = int(round(delay_ms * SR / 1000.0))
         feedback = 0.5
         mix = 1.0
-
         y = apply_delay(x, SR, delay_ms=delay_ms, feedback=feedback, mix=mix)
-
-        # y[0] should equal x[0] = 1.0
-        assert abs(y[0] - 1.0) < 1e-12, f"y[0]={y[0]}"
-        # y[D] should equal mix * feedback * y[0] = 0.5
-        assert abs(y[D] - mix * feedback * x[0]) < 1e-10, (
-            f"Expected y[{D}]={mix * feedback}, got {y[D]:.6f}"
-        )
-        # y[2D] should be (mix * feedback)^2
+        assert abs(y[0] - 1.0) < 1e-12, f'y[0]={y[0]}'
+        assert abs(y[D] - mix * feedback * x[0]) < 1e-10, f'Expected y[{D}]={mix * feedback}, got {y[D]:.6f}'
         if 2 * D < n_samp:
             expected_2d = (mix * feedback) ** 2
-            assert abs(y[2 * D] - expected_2d) < 1e-10, (
-                f"Expected y[{2*D}]={expected_2d:.6f}, got {y[2*D]:.6f}"
-            )
+            assert abs(y[2 * D] - expected_2d) < 1e-10, f'Expected y[{2 * D}]={expected_2d:.6f}, got {y[2 * D]:.6f}'
 
     def test_stereo_shape(self):
         x = _stereo()
@@ -280,18 +227,13 @@ class TestDelay:
             apply_delay(x, SR, delay_ms=100.0, feedback=0.3, mix=0.5)
 
     def test_short_signal(self):
-        x = _sine(440.0, 0.005)  # very short
+        x = _sine(440.0, 0.005)
         y = apply_delay(x, SR, delay_ms=100.0, feedback=0.3, mix=0.5)
         assert len(y) == len(x)
         assert np.all(np.isfinite(y))
 
-
-# =========================================================================
-# CHORUS
-# =========================================================================
-
-
 class TestChorus:
+
     def test_dry_mix_is_identity(self):
         """mix=0.0 should return the original signal."""
         x = _sine(440.0, 0.2)
@@ -322,18 +264,15 @@ class TestChorus:
         """With depth_ms > 0, the delayed version should differ from a static delay."""
         x = _sine(440.0, 2.0)
         y_chorus = apply_chorus(x, SR, rate_hz=1.5, depth_ms=3.0, base_delay_ms=15.0, mix=0.5)
-        # The chorus output should NOT be identical to a static delay
         static_delay_ms = 15.0
         D = int(round(static_delay_ms * SR / 1000.0))
-        # Check that at least some samples differ significantly
         diff = np.abs(y_chorus[D:] - x[D:])
-        assert np.mean(diff) > 1e-6, "Chorus output identical to static delay — modulation may be absent"
+        assert np.mean(diff) > 1e-06, 'Chorus output identical to static delay — modulation may be absent'
 
     def test_invalid_params_raise(self):
         with pytest.raises(ValueError):
             apply_chorus(_sine(), SR, rate_hz=0.0, depth_ms=3.0, base_delay_ms=15.0)
         with pytest.raises(ValueError):
-            # base_delay_ms <= depth_ms → negative delay possible
             apply_chorus(_sine(), SR, rate_hz=1.5, depth_ms=15.0, base_delay_ms=10.0)
         with pytest.raises(ValueError):
             apply_chorus(_sine(), SR, mix=1.5)
@@ -344,13 +283,8 @@ class TestChorus:
         with pytest.raises(VoiceDSPError):
             apply_chorus(x, SR)
 
-
-# =========================================================================
-# SOFT DISTORTION
-# =========================================================================
-
-
 class TestSoftDistortion:
+
     def test_output_bounded(self):
         """tanh(β·x)/tanh(β) approaches ±1 asymptotically for large x.
 
@@ -359,21 +293,16 @@ class TestSoftDistortion:
         The key guarantee is that the output is strongly bounded compared
         to the input (which had amplitude 5.0 here).
         """
-        x = _sine(440.0, 1.0, amplitude=5.0)   # well outside ±1
+        x = _sine(440.0, 1.0, amplitude=5.0)
         y = apply_soft_distortion(x, drive=5.0)
-        # Bound is very close to 1.0 — verifies soft clipping is active
-        assert np.all(np.abs(y) <= 1.0 + 1e-4), (
-            f"Output exceeded soft clip bound; max={np.max(np.abs(y)):.6f}"
-        )
-        # And substantially smaller than the input amplitude of 5.0
+        assert np.all(np.abs(y) <= 1.0 + 0.0001), f'Output exceeded soft clip bound; max={np.max(np.abs(y)):.6f}'
         assert np.max(np.abs(y)) < 1.1
 
     def test_low_drive_approximately_linear(self):
         """Very low drive should approach identity (linear region of tanh)."""
         x = _sine(440.0, 0.5, amplitude=0.1)
         y = apply_soft_distortion(x, drive=0.001)
-        # At very low drive, tanh(β·x)/tanh(β) ≈ x for small x
-        np.testing.assert_allclose(y, x, rtol=1e-3)
+        np.testing.assert_allclose(y, x, rtol=0.001)
 
     def test_harmonic_generation(self):
         """High drive on a single sine should produce odd harmonics."""
@@ -383,19 +312,17 @@ class TestSoftDistortion:
         spectrum = np.abs(np.fft.rfft(y))
         freqs = np.fft.rfftfreq(len(y), d=1.0 / SR)
 
-        def _energy_near(target_hz: float, tol: float = 5.0) -> float:
+        def _energy_near(target_hz: float, tol: float=5.0) -> float:
             mask = np.abs(freqs - target_hz) < tol
             return float(np.max(spectrum[mask])) if np.any(mask) else 0.0
-
-        # 3rd harmonic (600 Hz) should have energy
         third = _energy_near(3 * fund_hz)
-        assert third > 0.001, f"3rd harmonic energy at {3*fund_hz} Hz too low: {third:.4f}"
+        assert third > 0.001, f'3rd harmonic energy at {3 * fund_hz} Hz too low: {third:.4f}'
 
     def test_unity_gain_at_full_scale(self):
         """y[n] = tanh(β)/tanh(β) = 1 for x = 1.0 input."""
         drive = 5.0
         y = apply_soft_distortion(np.array([1.0], dtype=np.float64), drive=drive)
-        assert abs(y[0] - 1.0) < 1e-10, f"Expected ≈1.0 output for x=1.0, got {y[0]}"
+        assert abs(y[0] - 1.0) < 1e-10, f'Expected ≈1.0 output for x=1.0, got {y[0]}'
 
     def test_symmetry(self):
         """tanh is an odd function, so distortion must be symmetric."""

@@ -149,7 +149,7 @@ export default function EncodePage() {
           {blobUrl && (
             <a
               href={blobUrl}
-              download={`encoded_audio_${Date.now()}.png`}
+              download="encoded_audio.png"
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-3 text-sm font-semibold text-white transition-all"
             >
               <Download className="h-4 w-4" />

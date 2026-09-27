@@ -40,7 +40,6 @@ from dsp_core.effects import (
     apply_delay,
     apply_chorus,
     apply_soft_distortion,
-    apply_timbre_tilt,
     apply_reverb,
 )
 
@@ -98,8 +97,8 @@ def _is_pitch_neutral(semitones: float) -> bool:
 def process_voice_lab(req: VoiceProcessRequest) -> VoiceProcessResponse:
     """Execute the Voice Lab processing chain from the original input.
 
-    Chain order (deterministic, non-reorderable):
-        Gain → Speed → TimeStretch → PitchShift → Effect
+    Chain order (deterministic, sequential):
+        Effect 1 → Effect 2 → Effect 3 → ...
 
     Returns a VoiceProcessResponse with processed samples, metadata,
     and clipping information.
@@ -121,81 +120,80 @@ def process_voice_lab(req: VoiceProcessRequest) -> VoiceProcessResponse:
     current = x.copy()
     applied: list[str] = []
 
-    # ------------------------------------------------------------------ Gain
-    if req.gain is not None:
-        g = req.gain
-        if g.mode == "linear":
-            current = apply_linear_gain(current, g.gain_value)
-            applied.append(f"gain(linear, {g.gain_value:.4g})")
-        elif g.mode == "db":
-            if abs(g.gain_value) > 1e-9:   # 0 dB is strict identity
-                current = apply_db_gain(current, g.gain_value)
-                applied.append(f"gain({g.gain_value:+.2f} dB)")
-        elif g.mode == "peak":
-            current = apply_peak_normalization(current, g.gain_value)
-            applied.append(f"peak_norm(target={g.gain_value:.4g})")
-        elif g.mode == "rms":
-            current = apply_rms_normalization(current, g.gain_value)
-            applied.append(f"rms_norm(target={g.gain_value:.4g})")
+    # ---------------------------------------------------------- Effect Chain
+    for effect in req.effect_chain:
+        if not effect.enabled:
+            applied.append(f"{effect.op}(bypassed)")
+            continue
 
-    # ----------------------------------------------------------------- Speed
-    if req.speed is not None and not _is_speed_neutral(req.speed.speed):
-        current = apply_speed(current, sr, req.speed.speed)
-        applied.append(f"speed({req.speed.speed:.4g}x)")
+        op = effect.op
 
-    # ---------------------------------------------------------- Time Stretch
-    if req.time_stretch is not None and not _is_stretch_neutral(req.time_stretch.stretch):
-        current = apply_time_stretch(current, sr, req.time_stretch.stretch)
-        applied.append(f"time_stretch({req.time_stretch.stretch:.4g}x)")
+        if op == "gain":
+            if effect.mode == "linear":
+                current = apply_linear_gain(current, effect.gain_value)
+                applied.append(f"gain(linear, {effect.gain_value:.4g})")
+            elif effect.mode == "db":
+                if abs(effect.gain_value) > 1e-9:
+                    current = apply_db_gain(current, effect.gain_value)
+                    applied.append(f"gain({effect.gain_value:+.2f} dB)")
+                else:
+                    applied.append("gain(0dB)")
+            elif effect.mode == "peak":
+                current = apply_peak_normalization(current, effect.gain_value)
+                applied.append(f"peak_norm(target={effect.gain_value:.4g})")
+            elif effect.mode == "rms":
+                current = apply_rms_normalization(current, effect.gain_value)
+                applied.append(f"rms_norm(target={effect.gain_value:.4g})")
 
-    # ---------------------------------------------------------- Pitch Shift
-    if req.pitch_shift is not None and not _is_pitch_neutral(req.pitch_shift.semitones):
-        current = apply_pitch_shift(current, sr, req.pitch_shift.semitones)
-        applied.append(f"pitch_shift({req.pitch_shift.semitones:+.2f} semitones)")
+        elif op == "speed":
+            if not _is_speed_neutral(effect.speed):
+                current = apply_speed(current, sr, effect.speed)
+                applied.append(f"speed({effect.speed:.4g}x)")
+            else:
+                applied.append("speed(1.0x)")
 
-    # ---------------------------------------------------------------- Effect
-    if req.effect is not None:
-        op = req.effect.op
+        elif op == "time_stretch":
+            if not _is_stretch_neutral(effect.stretch):
+                current = apply_time_stretch(current, sr, effect.stretch)
+                applied.append(f"time_stretch({effect.stretch:.4g}x)")
+            else:
+                applied.append("time_stretch(1.0x)")
 
-        if op == "tremolo":
-            e = req.effect
-            current = apply_tremolo(current, sr, e.rate_hz, e.depth)
-            applied.append(f"tremolo(rate={e.rate_hz}Hz, depth={e.depth})")
+        elif op == "pitch_shift":
+            if not _is_pitch_neutral(effect.semitones):
+                current = apply_pitch_shift(current, sr, effect.semitones)
+                applied.append(f"pitch_shift({effect.semitones:+.2f} semitones)")
+            else:
+                applied.append("pitch_shift(0 st)")
+
+        elif op == "tremolo":
+            current = apply_tremolo(current, sr, effect.rate_hz, effect.depth)
+            applied.append(f"tremolo(rate={effect.rate_hz}Hz, depth={effect.depth})")
 
         elif op == "ring_modulation":
-            e = req.effect
-            current = apply_ring_modulation(current, sr, e.carrier_hz)
-            applied.append(f"ring_modulation(carrier={e.carrier_hz}Hz)")
+            current = apply_ring_modulation(current, sr, effect.carrier_hz)
+            applied.append(f"ring_modulation(carrier={effect.carrier_hz}Hz)")
 
-        elif op == "delay":
-            e = req.effect
-            current = apply_delay(current, sr, e.delay_ms, e.feedback, e.mix)
-            applied.append(f"delay({e.delay_ms}ms, fb={e.feedback}, mix={e.mix})")
+        elif op == "echo_delay":
+            current = apply_delay(current, sr, effect.delay_ms, effect.feedback, effect.mix)
+            applied.append(f"echo_delay({effect.delay_ms}ms, fb={effect.feedback}, mix={effect.mix})")
 
         elif op == "chorus":
-            e = req.effect
             current = apply_chorus(
-                current, sr, e.rate_hz, e.depth_ms, e.base_delay_ms, e.mix
+                current, sr, effect.rate_hz, effect.depth_ms, effect.base_delay_ms, effect.mix
             )
             applied.append(
-                f"chorus(rate={e.rate_hz}Hz, depth={e.depth_ms}ms, "
-                f"base={e.base_delay_ms}ms, mix={e.mix})"
+                f"chorus(rate={effect.rate_hz}Hz, depth={effect.depth_ms}ms, "
+                f"base={effect.base_delay_ms}ms, mix={effect.mix})"
             )
 
         elif op == "soft_distortion":
-            e = req.effect
-            current = apply_soft_distortion(current, e.drive)
-            applied.append(f"soft_distortion(drive={e.drive})")
-
-        elif op == "timbre":
-            e = req.effect
-            current = apply_timbre_tilt(current, sr, e.tilt)
-            applied.append(f"timbre(tilt={e.tilt:.2f})")
+            current = apply_soft_distortion(current, effect.drive)
+            applied.append(f"soft_distortion(drive={effect.drive})")
 
         elif op == "reverb":
-            e = req.effect
-            current = apply_reverb(current, sr, e.room_size, e.decay, e.wet)
-            applied.append(f"reverb(room={e.room_size:.2f}, decay={e.decay:.2f}, wet={e.wet:.2f})")
+            current = apply_reverb(current, sr, effect.room_size, effect.decay, effect.wet)
+            applied.append(f"reverb(room={effect.room_size:.2f}, decay={effect.decay:.2f}, wet={effect.wet:.2f})")
 
     # ------------------------------------------------- Measure output quality
     raw_peak = measure_peak(current)
