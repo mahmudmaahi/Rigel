@@ -68,3 +68,4 @@ dist/
 # Workspace / Agents
 .agents/
 .gemini/
+.claude/
