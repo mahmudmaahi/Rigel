@@ -9,5 +9,4 @@ soundfile==0.14.0
 Pillow==12.3.0
 uvicorn[standard]==0.35.0
 torch
-torchaudio
 ten_vad
