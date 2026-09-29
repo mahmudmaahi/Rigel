@@ -6,6 +6,7 @@ import { usePlayground } from "@/contexts/playground-context";
 import { AudioPlayer, AudioPlayerRef } from "@/components/audio/audio-player";
 import { useVadHistory, VadResult } from "@/hooks/use-vad-history";
 import { VadVisualization } from "@/components/vad/vad-visualization";
+import { getWebSocketUrl } from "@/lib/api";
 
 type SourceMode = "microphone" | "shared";
 
@@ -191,7 +192,8 @@ export default function SpeechVadPage() {
       setWsStatus("connecting");
       setEngineError(null);
       
-      const ws = new WebSocket("ws://localhost:8000/api/vad/stream");
+      const wsUrl = getWebSocketUrl("/api/vad/stream");
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       
       ws.onopen = () => {

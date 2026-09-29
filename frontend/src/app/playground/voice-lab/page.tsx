@@ -17,6 +17,7 @@ import {
   type WaveformData,
   type SpectrumData,
   type SpectrogramData,
+  getWebSocketUrl,
 } from "@/lib/api";
 import {
   Mic, Loader2, CheckCircle,
@@ -392,9 +393,7 @@ export default function VoiceLabPage() {
   const connectWebSocket = (sr: number): Promise<void> => {
     return new Promise((resolve, reject) => {
       setWsStatus("connecting");
-      const wsUrl = process.env.NEXT_PUBLIC_API_BASE_URL
-        ? process.env.NEXT_PUBLIC_API_BASE_URL.replace(/^http/, "ws") + "/api/audio/measure/stream"
-        : "ws://127.0.0.1:8000/api/audio/measure/stream";
+      const wsUrl = getWebSocketUrl("/api/audio/measure/stream");
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
