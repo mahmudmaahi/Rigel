@@ -1,0 +1,169 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face {
+    font-family: 'Rivage';
+    src: local('Rivage Personal Use');
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 1200px;
+    height: 420px;
+    background: #05050b;
+    overflow: hidden;
+  }
+
+  .stage {
+    position: relative;
+    width: 1200px;
+    height: 420px;
+    background:
+      radial-gradient(ellipse 700px 420px at 50% 46%, rgba(79,70,229,0.22), transparent 65%),
+      radial-gradient(ellipse 900px 500px at 85% 90%, rgba(30,58,138,0.28), transparent 60%),
+      radial-gradient(ellipse 900px 500px at 10% 10%, rgba(67,56,180,0.22), transparent 60%),
+      #05050b;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .stars {
+    position: absolute;
+    inset: 0;
+  }
+  .stars span {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: white;
+    border-radius: 50%;
+    opacity: 0.5;
+  }
+
+  .logo-wrap {
+    position: relative;
+    width: 108px;
+    height: 108px;
+    margin-bottom: 6px;
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  .logo-wrap.show {
+    animation: logoIn 1.1s cubic-bezier(.2,.8,.2,1) forwards, pulse 3.2s ease-in-out 1.1s infinite;
+  }
+  .logo-glow {
+    position: absolute;
+    inset: -40px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(56,189,248,0.55) 0%, rgba(79,70,229,0.35) 40%, transparent 72%);
+    filter: blur(6px);
+    z-index: 0;
+  }
+  .logo-img {
+    position: relative;
+    z-index: 1;
+    width: 108px;
+    height: 108px;
+    display: block;
+    filter: drop-shadow(0 0 18px rgba(103,232,249,0.85)) drop-shadow(0 0 40px rgba(79,70,229,0.65));
+  }
+
+  .title {
+    font-family: 'Rivage', serif;
+    font-size: 92px;
+    line-height: 1;
+    letter-spacing: 6px;
+    color: #f5f7ff;
+    text-shadow:
+      0 0 18px rgba(129,140,248,0.9),
+      0 0 46px rgba(79,70,229,0.65),
+      0 0 90px rgba(56,189,248,0.35);
+    opacity: 0;
+    transform: translateY(14px);
+    margin: 4px 0 2px 0;
+  }
+  .title.show {
+    animation: titleIn 1s cubic-bezier(.2,.8,.2,1) 0.55s forwards, glowPulse 3.2s ease-in-out 1.6s infinite;
+  }
+
+  .tagline {
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 20px;
+    font-style: italic;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  .tagline.show {
+    animation: tagIn 0.9s ease 1.15s forwards;
+  }
+
+  @keyframes logoIn {
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes titleIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes tagIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse {
+    0%, 100% { filter: drop-shadow(0 0 18px rgba(103,232,249,0.85)) drop-shadow(0 0 40px rgba(79,70,229,0.65)); }
+    50% { filter: drop-shadow(0 0 28px rgba(103,232,249,1)) drop-shadow(0 0 60px rgba(79,70,229,0.9)); }
+  }
+  @keyframes glowPulse {
+    0%, 100% {
+      text-shadow:
+        0 0 18px rgba(129,140,248,0.9),
+        0 0 46px rgba(79,70,229,0.65),
+        0 0 90px rgba(56,189,248,0.35);
+    }
+    50% {
+      text-shadow:
+        0 0 26px rgba(129,140,248,1),
+        0 0 64px rgba(79,70,229,0.9),
+        0 0 120px rgba(56,189,248,0.55);
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="stars" id="stars"></div>
+    <div class="logo-wrap" id="logo">
+      <div class="logo-glow"></div>
+      <img class="logo-img" src="../frontend/public/logo.png" />
+    </div>
+    <div class="title" id="title">RIGEL</div>
+    <div class="tagline" id="tagline">From Raw Signals to Pure Clarity</div>
+  </div>
+  <script>
+    const starsEl = document.getElementById('stars');
+    const positions = [
+      [3,10],[8,80],[15,25],[22,60],[30,15],[38,88],[45,40],[52,72],
+      [60,12],[68,55],[75,30],[82,78],[88,20],[94,65],[97,45],[12,50],
+      [55,8],[70,90],[40,70],[25,42]
+    ];
+    for (const [xPct, yPct] of positions) {
+      const s = document.createElement('span');
+      s.style.left = xPct + '%';
+      s.style.top = yPct + '%';
+      s.style.opacity = (0.2 + Math.random()*0.5).toFixed(2);
+      starsEl.appendChild(s);
+    }
+
+    // expose a function the screenshot driver can call to start the intro
+    window.startIntro = function() {
+      document.getElementById('logo').classList.add('show');
+      document.getElementById('title').classList.add('show');
+      document.getElementById('tagline').classList.add('show');
+    };
+  </script>
+</body>
+</html>

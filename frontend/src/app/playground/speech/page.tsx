@@ -62,14 +62,6 @@ export default function SpeechVadPage() {
   
   const { history, segments, latestResult: vadResult, addResult, clearHistory } = useVadHistory(sourceMode === "microphone" ? 10 : 0);
 
-  useEffect(() => {
-      const savedEngine = localStorage.getItem("selectedVadEngine") as "silero" | "ten_vad" | null;
-      if (savedEngine && (savedEngine === "silero" || savedEngine === "ten_vad")) {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          setVadEngine(savedEngine);
-      }
-  }, []);
-
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -481,20 +473,6 @@ export default function SpeechVadPage() {
           </div>
           
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-4">VAD Engine</h2>
-            <div className="flex flex-col gap-2">
-               <label className="flex items-center gap-3 cursor-pointer">
-                  <input type="radio" name="engine" value="silero" checked={vadEngine === "silero"} onChange={() => handleEngineChange("silero")} className="text-indigo-500 bg-black/40 border-white/10" />
-                  <span className="text-sm text-slate-300">Silero</span>
-               </label>
-               <label className="flex items-center gap-3 cursor-pointer">
-                  <input type="radio" name="engine" value="ten_vad" checked={vadEngine === "ten_vad"} onChange={() => handleEngineChange("ten_vad")} className="text-indigo-500 bg-black/40 border-white/10" />
-                  <span className="text-sm text-slate-300">TEN VAD</span>
-               </label>
-            </div>
-          </div>
-
-          <div>
             <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-4">Capture Control</h2>
             
             {sourceMode === "microphone" && (
@@ -608,28 +586,24 @@ export default function SpeechVadPage() {
           <div className="flex-1 flex flex-col justify-center items-center gap-8 py-8">
             {/* Active Engine Banner */}
             <div className="absolute top-4 right-4 flex flex-col items-end">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Active Engine</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Detector Status</div>
               <div className="flex items-center gap-2 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full backdrop-blur-sm">
                 <div className={`h-2 w-2 rounded-full ${
-                  engineError ? 'bg-red-500' : 
-                  wsStatus === 'disconnected' ? 'bg-slate-500' : 
-                  wsStatus === 'connecting' ? 'bg-amber-500 animate-pulse' : 
+                  engineError ? 'bg-red-500' :
+                  wsStatus === 'disconnected' ? 'bg-slate-500' :
+                  wsStatus === 'connecting' ? 'bg-amber-500 animate-pulse' :
                   vadResult?.is_speech ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-500'
                 }`}></div>
                 <span className="text-xs font-mono font-medium text-white max-w-[200px] truncate">
-                  {engineError 
-                    ? `ERROR: ${engineError}` 
-                    : wsStatus === "disconnected" 
-                      ? "DISCONNECTED" 
-                      : wsStatus === "connecting" 
-                        ? "CONNECTING..." 
-                        : confirmedEngine === "silero" 
-                          ? "SILERO VAD" 
-                          : confirmedEngine === "ten_vad" 
-                            ? "TEN VAD" 
-                            : confirmedEngine 
-                              ? confirmedEngine.toUpperCase() 
-                              : "WAITING FOR AUDIO"}
+                  {engineError
+                    ? `ERROR: ${engineError}`
+                    : wsStatus === "disconnected"
+                      ? "DISCONNECTED"
+                      : wsStatus === "connecting"
+                        ? "CONNECTING..."
+                        : confirmedEngine
+                          ? "ACTIVE"
+                          : "WAITING FOR AUDIO"}
                 </span>
               </div>
             </div>
