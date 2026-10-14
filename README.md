@@ -8,7 +8,7 @@
 ![Tests](https://img.shields.io/badge/backend%20tests-709%20passing-2ea44f?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-all%20rights%20reserved-red?style=for-the-badge)
 
-![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=next.js&logoColor=white)
+![Next.js](https://img.shields.io/badge/NextJS-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -33,6 +33,18 @@ Bangladesh University of Engineering and Technology (BUET)
 | Md. Shihabul Hasan | 2305139 |
 
 **Project Supervisor:** Md. Roqunuzzaman Sojib
+
+</div>
+
+---
+
+<div align="center">
+
+### Recognition
+
+**Rigel was awarded a Certificate of Excellence** by the Department of Computer Science and Engineering, Bangladesh University of Engineering and Technology (BUET), for the CSE 220 Signals and Linear Systems Sessional (September 30, 2026).
+
+<img src="assets/certificate.jpg" alt="Certificate of Excellence awarded to Team Orion for the project Rigel" width="720" />
 
 </div>
 
@@ -162,7 +174,8 @@ rigel/
 │
 ├── assets/                        # README banner & visual assets
 │   ├── banner.gif                   # Animated intro banner
-│   └── banner.png                   # Static banner fallback
+│   ├── banner.png                   # Static banner fallback
+│   └── certificate.jpg              # Certificate of Excellence (BUET CSE)
 ├── LICENSE
 └── README.md
 ```
@@ -280,7 +293,7 @@ npm run build
 
 **Frontend**
 
-![Next.js](https://img.shields.io/badge/Next.js%2016-000000?style=flat-square&logo=next.js&logoColor=white)
+![Next.js](https://img.shields.io/badge/NextJS%2016-000000?style=flat-square&logo=nextdotjs&logoColor=white)
 ![React](https://img.shields.io/badge/React%2019-20232A?style=flat-square&logo=react&logoColor=61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
@@ -334,11 +347,11 @@ This README stays high-level on purpose; the in-app documentation is the source 
 
 ## License and Copyright
 
-Copyright (c) 2026 MD Mahmudul Hossain Maahi and Md. Shihabul Hasan (Team Orion). All rights reserved.
+Copyright (c) 2026 MD Mahmudul Hossain Maahi. All rights reserved.
 
 This repository was created for academic purposes as part of the CSE 220 (Signals and Linear Systems) sessional course at the Department of Computer Science and Engineering, Bangladesh University of Engineering and Technology (BUET). It is made available for educational reference and evaluation only.
 
-No person or organization may copy, modify, distribute, sublicense, or deploy any part of this codebase for commercial purposes without prior written permission from the authors. See [`LICENSE`](LICENSE) for the full terms.
+No person or organization may copy, modify, distribute, sublicense, or deploy any part of this codebase for commercial purposes without prior written permission from the author. See [`LICENSE`](LICENSE) for the full terms.
 
 <br/>
 
